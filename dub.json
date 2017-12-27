@@ -1,0 +1,10 @@
+{
+    "name": "collections",
+    "authors": [
+        "Eduard Staniloiu"
+    ],
+    "targetType": "library",
+    "description": "A new collections framework for the D Standard Library",
+    "copyright": "Copyright © 2017, Eduard Staniloiu",
+    "license": "Boost License 1.0"
+}
