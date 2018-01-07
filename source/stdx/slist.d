@@ -173,7 +173,7 @@ public:
         else
         {
             setAllocator(allocator);
-            insert(values);
+            insert(0, values);
         }
     }
 
@@ -202,7 +202,7 @@ public:
         else
         {
             setAllocator(allocator);
-            insert(stuff);
+            insert(0, stuff);
         }
     }
 
@@ -371,7 +371,7 @@ public:
         return typeof(this)(alloc, this);
     }
 
-    size_t insert(Stuff)(Stuff stuff)
+    size_t insert(Stuff)(size_t pos, Stuff stuff)
     if (isInputRange!Stuff && isImplicitlyConvertible!(ElementType!Stuff, T))
     {
         debug(CollectionSList)
@@ -399,15 +399,31 @@ public:
             return 0;
         }
 
-        tmpNode._next = _head;
-        _head = tmpHead;
+        Node *needle = _head;
+        Node *needlePrev = null;
+        while (pos)
+        {
+            needlePrev = needle;
+            needle = needle._next;
+            --pos;
+        }
+
+        tmpNode._next = needle;
+        if (needlePrev is null)
+        {
+            _head = tmpHead;
+        }
+        else
+        {
+            needlePrev._next = tmpHead;
+        }
         return result;
     }
 
-    size_t insert(Stuff)(Stuff[] stuff...)
+    size_t insert(Stuff)(size_t pos, Stuff[] stuff...)
     if (isImplicitlyConvertible!(Stuff, T))
     {
-        return insert(stuff);
+        return insert(pos, stuff);
     }
 
     size_t insertBack(Stuff)(Stuff stuff)
@@ -488,7 +504,7 @@ public:
             }
         }
         typeof(this) newList = typeof(this)(alloc, rhs);
-        newList.insert(this);
+        newList.insert(0, this);
         return newList;
     }
 
@@ -686,7 +702,8 @@ version(unittest) private @safe void testSimple(IAllocator allocator)
     assert(sl.empty);
     assert(sl.isUnique);
 
-    sl.insert(1, 2, 3);
+    size_t pos = 0;
+    sl.insert(pos, 1, 2, 3);
     assert(sl.front == 1);
     assert(equal(sl, sl));
     assert(equal(sl, [1, 2, 3]));
@@ -695,9 +712,9 @@ version(unittest) private @safe void testSimple(IAllocator allocator)
     assert(sl.front == 2);
     assert(equal(sl, [2, 3]));
 
-    sl.insert([4, 5, 6]);
-    sl.insert(7);
-    sl.insert([8]);
+    sl.insert(pos, [4, 5, 6]);
+    sl.insert(pos, 7);
+    sl.insert(pos, [8]);
     assert(equal(sl, [8, 7, 4, 5, 6, 2, 3]));
 
     sl.insertBack(0, 1);
@@ -723,6 +740,9 @@ version(unittest) private @safe void testSimple(IAllocator allocator)
     assert(equal(sl, [8, 4, 6, 2, 3, 0, 1, -1, -2]));
     sl.remove(walkLength(sl) - 1);
     assert(equal(sl, [8, 4, 6, 2, 3, 0, 1, -1]));
+    pos = 1;
+    sl.insert(pos, 10);
+    assert(equal(sl, [8, 10, 4, 6, 2, 3, 0, 1, -1]));
 }
 
 @trusted unittest
@@ -748,7 +768,8 @@ version(unittest) private @safe void testSimpleImmutable(IAllocator allocator)
     auto sl = SList!(immutable int)(allocator);
     assert(sl.empty);
 
-    sl.insert(1, 2, 3);
+    size_t pos = 0;
+    sl.insert(pos, 1, 2, 3);
     assert(sl.front == 1);
     assert(equal(sl, sl));
     assert(equal(sl, [1, 2, 3]));
@@ -758,9 +779,9 @@ version(unittest) private @safe void testSimpleImmutable(IAllocator allocator)
     assert(equal(sl, [2, 3]));
     assert(sl.tail.front == 3);
 
-    sl.insert([4, 5, 6]);
-    sl.insert(7);
-    sl.insert([8]);
+    sl.insert(pos, [4, 5, 6]);
+    sl.insert(pos, 7);
+    sl.insert(pos, [8]);
     assert(equal(sl, [8, 7, 4, 5, 6, 2, 3]));
 
     sl.insertBack(0, 1);
@@ -808,13 +829,14 @@ version(unittest) private @safe void testCopyAndRef(IAllocator allocator)
     assert(equal(slFromRange, [1, 2, 3]));
 
     SList!int slInsFromRange = SList!int(allocator);
-    slInsFromRange.insert(slFromList);
+    size_t pos = 0;
+    slInsFromRange.insert(pos, slFromList);
     slFromList.popFront();
     assert(equal(slFromList, [3]));
     assert(equal(slInsFromRange, [2, 3]));
 
     SList!int slInsBackFromRange = SList!int(allocator);
-    slInsBackFromRange.insert(slFromList);
+    slInsBackFromRange.insert(pos, slFromList);
     slFromList.popFront();
     assert(slFromList.empty);
     assert(equal(slInsBackFromRange, [3]));
@@ -851,7 +873,8 @@ version(unittest) private @safe void testWithStruct(IAllocator allocator)
         assert(equal(listOfLists.front, [1, 2, 3]));
         listOfLists.front.front = 2;
         assert(equal(listOfLists.front, [2, 2, 3]));
-        static assert(!__traits(compiles, listOfLists.insert(1)));
+        size_t pos = 0;
+        static assert(!__traits(compiles, listOfLists.insert(pos, 1)));
 
         auto immListOfLists = immutable SList!(SList!int)(allocator, list);
         assert(immListOfLists.front.front == 2);

@@ -162,9 +162,9 @@ $(TR
     $(TD Removes all elements in `c`.)
 )
 $(TR
-    $(TDNW $(D c.insert(x)))
+    $(TDNW $(D c.insert(pos, x)))
     $(TDNW $(D n$(SUBSCRIPT x)))
-    $(TD Inserts `x` at the front of `c`. `x` may be a single element or an input
+    $(TD Inserts `x` at `pos` in `c`. `x` may be a single element or an input
          range type.)
 )
 $(TR

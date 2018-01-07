@@ -184,7 +184,7 @@ public:
         else
         {
             setAllocator(allocator);
-            insert(values);
+            insert(0, values);
         }
     }
 
@@ -213,7 +213,7 @@ public:
         else
         {
             setAllocator(allocator);
-            insert(stuff);
+            insert(0, stuff);
         }
     }
 
@@ -503,7 +503,7 @@ public:
         return typeof(this)(alloc, this);
     }
 
-    size_t insert(Stuff)(Stuff stuff)
+    size_t insert(Stuff)(size_t pos, Stuff stuff)
     if (isInputRange!Stuff && isImplicitlyConvertible!(ElementType!Stuff, T))
     {
         debug(CollectionDList)
@@ -539,39 +539,74 @@ public:
             return 0;
         }
 
-        tmpNode._next = _head;
-        if (_head !is null)
+        if (!_head) assert(pos == 0);
+
+        size_t initPos = pos;
+        Node *needle = _head;
+        while (pos && needle._next !is null)
         {
-            addRef(_head);
-            if (_head._prev !is null)
+            needle = needle._next;
+            --pos;
+        }
+
+        // Check if we need to insert at the back of the list
+        if (initPos != 0 && needle._next is null && pos >= 1)
+        {
+            // We need to insert at the back of the list
+            assert(pos == 1, "Index out of range");
+            needle._next = tmpHead;
+            tmpHead._prev = needle;
+            addRef(needle);
+            return result;
+        }
+        assert(pos == 0, "Index out of range");
+
+        tmpNode._next = needle;
+        if (needle !is null)
+        {
+            addRef(needle);
+            if (needle._prev !is null)
             {
-                tmpHead._prev = _head._prev;
-                _head._prev._next = tmpHead;
-                addRef(tmpHead);
+                tmpHead._prev = needle._prev;
+                needle._prev._next = tmpHead;
+                // Inc ref only when tmpHead will be the new head of the list
+                if (initPos == 0)
+                {
+                    addRef(tmpHead);
+                }
+
                 // Delete extra ref, since we already added the ref earlier
                 // through tmpNode._next
-                delRef(_head);
+                delRef(needle);
             }
-            // Pass the ref to the new head
-            delRef(_head);
-            _head._prev = tmpNode;
+            if (initPos == 0)
+            {
+                // Pass the ref to the new head
+                delRef(needle);
+            }
+            assert(needle !is null);
+            needle._prev = tmpNode;
             if (tmpHead == tmpNode)
             {
                 addRef(tmpHead);
             }
             else
             {
-                addRef(_head._prev);
+                addRef(needle._prev);
             }
         }
-        _head = tmpHead;
+
+        if (initPos == 0)
+        {
+            _head = tmpHead;
+        }
         return result;
     }
 
-    size_t insert(Stuff)(Stuff[] stuff...)
+    size_t insert(Stuff)(size_t pos, Stuff[] stuff...)
     if (isImplicitlyConvertible!(Stuff, T))
     {
-        return insert(stuff);
+        return insert(pos, stuff);
     }
 
     size_t insertBack(Stuff)(Stuff stuff)
@@ -665,7 +700,7 @@ public:
         }
 
         typeof(this) newList = typeof(this)(alloc, rhs);
-        newList.insert(this);
+        newList.insert(0, this);
         return newList;
     }
 
@@ -836,33 +871,35 @@ version (unittest) private @trusted void testInit(IAllocator allocator)
 version (unittest) private @trusted void testInsert(IAllocator allocator)
 {
     import std.algorithm.comparison : equal;
+    import std.range.primitives : walkLength;
 
     DList!int dl = DList!int(allocator, 1);
-    dl.insert(2);
+    size_t pos = 0;
+    dl.insert(pos, 2);
     assert(equal(dl, [2, 1]));
 
     DList!int dl2 = DList!int(allocator, 1);
-    dl2.insert(2, 3);
+    dl2.insert(pos, 2, 3);
     assert(equal(dl2, [2, 3, 1]));
 
     DList!int dl3 = DList!int(allocator, 1, 2);
-    dl3.insert(3);
+    dl3.insert(pos, 3);
     assert(equal(dl3, [3, 1, 2]));
 
     DList!int dl4 = DList!int(allocator, 1, 2);
-    dl4.insert(3, 4);
+    dl4.insert(pos, 3, 4);
     assert(equal(dl4, [3, 4, 1, 2]));
 
     DList!int dl5 = DList!int(allocator, 1, 2);
     dl5.popFront();
-    dl5.insert(3);
+    dl5.insert(pos, 3);
     assert(equal(dl5, [3, 2]));
     dl5.popPrev();
     assert(equal(dl5, [1, 3, 2]));
 
     DList!int dl6 = DList!int(allocator, 1, 2);
     dl6.popFront();
-    dl6.insert(3, 4);
+    dl6.insert(pos, 3, 4);
     assert(equal(dl6, [3, 4, 2]));
     dl6.popPrev();
     assert(equal(dl6, [1, 3, 4, 2]));
@@ -877,8 +914,18 @@ version (unittest) private @trusted void testInsert(IAllocator allocator)
     int[] empty;
     dl6.insertBack(empty);
     assert(equal(dl6, [1, 3, 4, 2, 5, 6, 7, 8, 9, 10]));
-    dl6.insert(empty);
+    dl6.insert(pos, empty);
     assert(equal(dl6, [1, 3, 4, 2, 5, 6, 7, 8, 9, 10]));
+
+    DList!int dl7 = DList!int(allocator, 1);
+    assert(equal(dl7, [1]));
+    dl7.insert(pos, 2);
+    assert(equal(dl7, [2, 1]));
+    pos = walkLength(dl7);
+    dl7.insert(pos, 3);
+    assert(equal(dl7, [2, 1, 3]));
+    dl7.insert(pos, 4);
+    assert(equal(dl7, [2, 1, 4, 3]));
 }
 
 @trusted unittest
@@ -900,12 +947,13 @@ version (unittest) private @trusted void testRemove(IAllocator allocator)
     import std.algorithm.comparison : equal;
 
     DList!int dl = DList!int(allocator, 1);
+    size_t pos = 0;
     dl.remove();
     assert(dl.empty);
     assert(dl.isUnique);
     assert(!dl._ouroborosAllocator.isNull);
 
-    dl.insert(2);
+    dl.insert(pos, 2);
     auto dl2 = dl;
     auto dl3 = dl;
     assert(!dl.isUnique);
@@ -953,13 +1001,14 @@ version (unittest) private @trusted void testCopyAndRef(IAllocator allocator)
     assert(equal(dlFromRange, [1, 2, 3]));
 
     DList!int dlInsFromRange = DList!int(allocator);
-    dlInsFromRange.insert(dlFromList);
+    size_t pos = 0;
+    dlInsFromRange.insert(pos, dlFromList);
     dlFromList.popFront();
     assert(equal(dlFromList, [3]));
     assert(equal(dlInsFromRange, [2, 3]));
 
     DList!int dlInsBackFromRange = DList!int(allocator);
-    dlInsBackFromRange.insert(dlFromList);
+    dlInsBackFromRange.insert(pos, dlFromList);
     dlFromList.popFront();
     assert(dlFromList.empty);
     assert(equal(dlInsBackFromRange, [3]));
@@ -1134,10 +1183,11 @@ version(unittest) private @trusted void testWithStruct(IAllocator allocator)
     auto list = DList!int(allocator, 1, 2, 3);
     {
         auto listOfLists = DList!(DList!int)(allocator, list);
+        size_t pos = 0;
         assert(equal(listOfLists.front, [1, 2, 3]));
         listOfLists.front.front = 2;
         assert(equal(listOfLists.front, [2, 2, 3]));
-        static assert(!__traits(compiles, listOfLists.insert(1)));
+        static assert(!__traits(compiles, listOfLists.insert(pos, 1)));
 
         auto immListOfLists = immutable DList!(DList!int)(allocator, list);
         assert(immListOfLists.front.front == 2);

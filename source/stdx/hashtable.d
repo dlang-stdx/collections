@@ -135,7 +135,7 @@ public:
             }
             else
             {
-                _buckets[pos].insert(KVPair(k, v));
+                _buckets[pos].insert(0, KVPair(k, v));
             }
         }
         _numElems[0] += assocArr.length;
