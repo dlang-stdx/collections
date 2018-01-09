@@ -5,6 +5,6 @@
     ],
     "targetType": "library",
     "description": "A new collections framework for the D Standard Library",
-    "copyright": "Copyright © 2017, Eduard Staniloiu",
-    "license": "Boost License 1.0"
+    "copyright": "The D Language Foundation",
+    "license": "BSL-1.0"
 }
