@@ -1,0 +1,30 @@
+# Documentation: https://docs.codecov.io/docs/codecov-yaml
+
+codecov:
+  # At CircleCi, the PR is merged into `master` before the testsuite is run.
+  # This allows CodeCov to adjust the resulting coverage diff, s.t. it matches
+  # with the GitHub diff.
+  # https://github.com/codecov/support/issues/363
+  # https://docs.codecov.io/v4.3.6/docs/comparing-commits
+  allow_coverage_offsets: true
+
+coverage:
+  precision: 3
+  round: down
+  range: "80...100"
+
+  # Learn more at https://docs.codecov.io/docs/commit-status
+  status:
+    project:
+      default:
+        informational: true
+        # Informational doesn't work with project yet
+        threshold: 0.1
+    patch:
+      default:
+        informational: true
+    changes:
+      default:
+        informational: true
+
+comment: false
