@@ -1,6 +1,6 @@
-module stdx.collection.slist;
+module stdx.collections.slist;
 
-import stdx.collection.common;
+import stdx.collections.common;
 
 debug(CollectionSList) import std.stdio;
 

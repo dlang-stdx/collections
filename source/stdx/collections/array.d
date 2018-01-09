@@ -1,6 +1,6 @@
-module stdx.collection.array;
+module stdx.collections.array;
 
-import stdx.collection.common;
+import stdx.collections.common;
 
 debug(CollectionArray) import std.stdio;
 
@@ -1012,7 +1012,7 @@ version(unittest) private @trusted void testSlice(IAllocator allocator)
 }
 
 //@trusted unittest {
-    //import stdx.collection.slist;
+    //import stdx.collections.slist;
     //import std.stdio;
 
     //{

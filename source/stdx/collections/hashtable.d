@@ -1,12 +1,12 @@
-module stdx.collection.hashtable;
+module stdx.collections.hashtable;
 
-import stdx.collection.common;
+import stdx.collections.common;
 import std.experimental.allocator : IAllocator, theAllocator, make, dispose;
 import std.experimental.allocator.building_blocks.affix_allocator;
 import std.experimental.allocator.gc_allocator;
-//import stdx.collection.pair : Pair;
-import stdx.collection.slist : SList;
-import stdx.collection.array : Array;
+//import stdx.collections.pair : Pair;
+import stdx.collections.slist : SList;
+import stdx.collections.array : Array;
 
 debug(CollectionHashtable) import std.stdio;
 

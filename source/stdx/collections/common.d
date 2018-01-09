@@ -1,7 +1,7 @@
 /**
-Utility and ancillary artifacts of `stdx.collection`.
+Utility and ancillary artifacts of `stdx.collections`.
 */
-module stdx.collection.common;
+module stdx.collections.common;
 import std.range: isInputRange;
 
 auto tail(Collection)(Collection collection)

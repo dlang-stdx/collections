@@ -195,4 +195,4 @@ boost.org/LICENSE_1_0.txt)).
 Authors: Eduard Staniloiu, $(HTTP erdani.com, Andrei Alexandrescu)
  */
 
-module stdx.collection;
+module stdx.collections;
