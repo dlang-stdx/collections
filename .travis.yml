@@ -1,0 +1,14 @@
+sudo: false
+os:
+ - linux
+language: d
+d:
+ - ldc
+
+matrix:
+  include:
+    - d: dmd
+      script:
+        - dub test --compiler=$DC --build=unittest-cov
+      after_success:
+        - bash <(curl -s https://codecov.io/bash)
