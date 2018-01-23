@@ -13,28 +13,28 @@ auto tail(Collection)(Collection collection)
 
 struct Mutable(T)
 {
-    import std.experimental.allocator : IAllocator, theAllocator, dispose;
+    import std.experimental.allocator : RCIAllocator, RCISharedAllocator, theAllocator, dispose;
     import std.experimental.allocator.building_blocks.affix_allocator;
     import core.atomic : atomicOp;
 
     private struct RefCountedMutable
     {
-        IAllocator _alloc;
+        RCIAllocator _alloc;
         T _payload;
         size_t _rc;
     }
 
     private void[] _mutableSupport;
-    private AffixAllocator!(IAllocator, RefCountedMutable) _mutableAllocator;
+    private AffixAllocator!(RCIAllocator, RefCountedMutable) _mutableAllocator;
 
     this(this _)(T theMutable)
     {
         this(theAllocator, theMutable);
     }
 
-    this(this _)(IAllocator alloc, T theMutable)
+    this(this _)(RCIAllocator alloc, T theMutable)
     {
-        auto t = AffixAllocator!(IAllocator, RefCountedMutable)(alloc);
+        auto t = AffixAllocator!(RCIAllocator, RefCountedMutable)(alloc);
         auto tSupport = (() @trusted => t.allocate(1))();
         () @trusted {
             t.prefix(tSupport)._alloc = alloc;
@@ -73,7 +73,7 @@ struct Mutable(T)
             if (_mutableAllocator.prefix(_mutableSupport)._rc == 0)
             {
                 auto origAlloc = _mutableAllocator.prefix(_mutableSupport)._alloc;
-                auto disposer = AffixAllocator!(IAllocator, RefCountedMutable)(origAlloc);
+                auto disposer = AffixAllocator!(RCIAllocator, RefCountedMutable)(origAlloc);
                 disposer.dispose(_mutableSupport);
             }
             else
@@ -112,7 +112,16 @@ struct Mutable(T)
     {
         static if (is(Q == immutable) || is(Q == const))
         {
-            alias PayloadType = typeof(_mutableAllocator.prefix(_mutableSupport)._payload);
+            //alias PayloadType = typeof(_mutableAllocator.prefix(_mutableSupport)._payload);
+            static if (is(Q == immutable))
+            {
+                alias PayloadType = shared(AffixAllocator!(shared RCISharedAllocator, ulong, void));
+            }
+            else
+            {
+                alias PayloadType = const(AffixAllocator!(shared RCISharedAllocator, ulong, void));
+            }
+            pragma(msg, "pld type is " ~ PayloadType.stringof);
             return cast(shared PayloadType)(_mutableAllocator.prefix(_mutableSupport)._payload);
         }
         else

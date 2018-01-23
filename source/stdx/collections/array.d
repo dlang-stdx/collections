@@ -8,14 +8,14 @@ version(unittest)
 {
     import std.experimental.allocator.mallocator;
     import std.experimental.allocator.building_blocks.stats_collector;
-    import std.experimental.allocator : IAllocator, allocatorObject;
+    import std.experimental.allocator : RCIAllocator, allocatorObject;
 
     private alias SCAlloc = StatsCollector!(Mallocator, Options.bytesUsed);
 }
 
 struct Array(T)
 {
-    import std.experimental.allocator : IAllocator, theAllocator, make, dispose;
+    import std.experimental.allocator : RCIAllocator, theAllocator, make, dispose;
     import std.experimental.allocator.building_blocks.affix_allocator;
     import std.traits : isImplicitlyConvertible, Unqual, isArray;
     import std.range.primitives : isInputRange, isInfinite,
@@ -30,7 +30,7 @@ struct Array(T)
     static enum double capacityFactor = 3.0 / 2;
     static enum initCapacity = 3;
 
-    alias MutableAlloc = AffixAllocator!(IAllocator, size_t);
+    alias MutableAlloc = AffixAllocator!(RCIAllocator, size_t);
     Mutable!MutableAlloc _ouroborosAllocator;
 
     /// Returns the actual allocator from ouroboros
@@ -42,7 +42,7 @@ struct Array(T)
 
     /// Constructs the ouroboros allocator from allocator if the ouroboros
     //allocator wasn't previously set
-    @trusted bool setAllocator(IAllocator allocator)
+    @trusted bool setAllocator(RCIAllocator allocator)
     {
         if (_ouroborosAllocator.isNull)
         {
@@ -53,9 +53,9 @@ struct Array(T)
         return false;
     }
 
-    @trusted IAllocator getAllocator(this _)()
+    @trusted RCIAllocator getAllocator(this _)()
     {
-        return _ouroborosAllocator.isNull ? null : allocator().parent;
+        return _ouroborosAllocator.isNull ? RCIAllocator(null) : allocator().parent;
     }
 
     @trusted void addRef(SupportQual, this Qualified)(SupportQual support)
@@ -154,7 +154,7 @@ struct Array(T)
     }
 
 public:
-    this(this _)(IAllocator allocator)
+    this(this _)(RCIAllocator allocator)
     {
         debug(CollectionArray)
         {
@@ -170,7 +170,7 @@ public:
         this(theAllocator, values);
     }
 
-    this(U, this Qualified)(IAllocator allocator, U[] values...)
+    this(U, this Qualified)(RCIAllocator allocator, U[] values...)
     if (isImplicitlyConvertible!(U, T))
     {
         debug(CollectionArray)
@@ -198,7 +198,7 @@ public:
         this(theAllocator, stuff);
     }
 
-    this(Stuff, this Qualified)(IAllocator allocator, Stuff stuff)
+    this(Stuff, this Qualified)(RCIAllocator allocator, Stuff stuff)
     if (isInputRange!Stuff && !isInfinite!Stuff
         && isImplicitlyConvertible!(ElementType!Stuff, T)
         && !is(Stuff == T[]))
@@ -476,8 +476,8 @@ public:
             writefln("Array.dup: begin");
             scope(exit) writefln("Array.dup: end");
         }
-        IAllocator alloc = getAllocator();
-        if (alloc is null)
+        RCIAllocator alloc = getAllocator();
+        if (alloc.isNull)
         {
             alloc = theAllocator;
         }
@@ -616,7 +616,7 @@ public:
     }
 }
 
-version(unittest) private @trusted void testConcatAndAppend(IAllocator allocator)
+version(unittest) private @trusted void testConcatAndAppend(RCIAllocator allocator)
 {
     import std.algorithm.comparison : equal;
 
@@ -654,17 +654,17 @@ version(unittest) private @trusted void testConcatAndAppend(IAllocator allocator
 {
     import std.conv;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
+    auto _allocator = allocatorObject(&statsCollectorAlloc);
 
     () @safe {
         testConcatAndAppend(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
     }();
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
-version(unittest) private @trusted void testSimple(IAllocator allocator)
+version(unittest) private @trusted void testSimple(RCIAllocator allocator)
 {
     import std.algorithm.comparison : equal;
     import std.algorithm.searching : canFind;
@@ -710,17 +710,17 @@ version(unittest) private @trusted void testSimple(IAllocator allocator)
 {
     import std.conv;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
+    auto _allocator = allocatorObject(&statsCollectorAlloc);
 
     () @safe {
         testSimple(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
     }();
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
-version(unittest) private @trusted void testSimpleImmutable(IAllocator allocator)
+version(unittest) private @trusted void testSimpleImmutable(RCIAllocator allocator)
 {
     import std.algorithm.comparison : equal;
     import std.algorithm.searching : canFind;
@@ -759,17 +759,17 @@ version(unittest) private @trusted void testSimpleImmutable(IAllocator allocator
 {
     import std.conv;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
+    auto _allocator = allocatorObject(&statsCollectorAlloc);
 
     () @safe {
         testSimpleImmutable(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
     }();
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
-version(unittest) private @trusted void testCopyAndRef(IAllocator allocator)
+version(unittest) private @trusted void testCopyAndRef(RCIAllocator allocator)
 {
     import std.algorithm.comparison : equal;
 
@@ -806,17 +806,17 @@ version(unittest) private @trusted void testCopyAndRef(IAllocator allocator)
 {
     import std.conv;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
+    auto _allocator = allocatorObject(&statsCollectorAlloc);
 
     () @safe {
         testCopyAndRef(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
     }();
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
-version(unittest) private @trusted void testImmutability(IAllocator allocator)
+version(unittest) private @trusted void testImmutability(RCIAllocator allocator)
 {
     auto a = immutable Array!(int)(allocator, 1, 2, 3);
     auto a2 = a;
@@ -832,7 +832,7 @@ version(unittest) private @trusted void testImmutability(IAllocator allocator)
     static assert(!__traits(compiles, a4 = a4.tail));
 }
 
-version(unittest) private @trusted void testConstness(IAllocator allocator)
+version(unittest) private @trusted void testConstness(RCIAllocator allocator)
 {
     auto a = const Array!(int)(allocator, 1, 2, 3);
     auto a2 = a;
@@ -852,18 +852,18 @@ version(unittest) private @trusted void testConstness(IAllocator allocator)
 {
     import std.conv;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
+    auto _allocator = allocatorObject(&statsCollectorAlloc);
 
     () @safe {
         testImmutability(_allocator);
         testConstness(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
     }();
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
-version(unittest) private @trusted void testWithStruct(IAllocator allocator)
+version(unittest) private @trusted void testWithStruct(RCIAllocator allocator)
 {
     import std.algorithm.comparison : equal;
     import std.stdio;
@@ -887,17 +887,17 @@ version(unittest) private @trusted void testWithStruct(IAllocator allocator)
 {
     import std.conv;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
+    auto _allocator = allocatorObject(&statsCollectorAlloc);
 
     () @safe {
         testWithStruct(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
     }();
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
-version(unittest) private @trusted void testWithClass(IAllocator allocator)
+version(unittest) private @trusted void testWithClass(RCIAllocator allocator)
 {
     class MyClass
     {
@@ -919,17 +919,17 @@ version(unittest) private @trusted void testWithClass(IAllocator allocator)
 {
     import std.conv;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
+    auto _allocator = allocatorObject(&statsCollectorAlloc);
 
     () @safe {
         testWithClass(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
     }();
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
-version(unittest) private @trusted void testOpOverloads(IAllocator allocator)
+version(unittest) private @trusted void testOpOverloads(RCIAllocator allocator)
 {
     auto a = Array!int(allocator, 1, 2, 3, 4);
     assert(a[0] == 1); // opIndex
@@ -963,17 +963,17 @@ version(unittest) private @trusted void testOpOverloads(IAllocator allocator)
 {
     import std.conv;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
+    auto _allocator = allocatorObject(&statsCollectorAlloc);
 
     () @safe {
         testOpOverloads(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
     }();
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
-version(unittest) private @trusted void testSlice(IAllocator allocator)
+version(unittest) private @trusted void testSlice(RCIAllocator allocator)
 {
     import std.algorithm.comparison : equal;
 
@@ -1001,14 +1001,14 @@ version(unittest) private @trusted void testSlice(IAllocator allocator)
 {
     import std.conv;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
+    auto _allocator = allocatorObject(&statsCollectorAlloc);
 
     () @safe {
         testSlice(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
     }();
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
 //@trusted unittest {
