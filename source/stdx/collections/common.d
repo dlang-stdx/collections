@@ -13,28 +13,50 @@ auto tail(Collection)(Collection collection)
 
 struct Mutable(T)
 {
-    import std.experimental.allocator : RCIAllocator, RCISharedAllocator, theAllocator, dispose;
+    import std.experimental.allocator : RCIAllocator, RCISharedAllocator,
+           theAllocator, processAllocator, dispose;
     import std.experimental.allocator.building_blocks.affix_allocator;
+    import std.variant : Algebraic;
     import core.atomic : atomicOp;
 
     private struct RefCountedMutable
     {
-        RCIAllocator _alloc;
+        Algebraic!(RCIAllocator, RCISharedAllocator) _alloc;
         T _payload;
         size_t _rc;
     }
 
     private void[] _mutableSupport;
-    private AffixAllocator!(RCIAllocator, RefCountedMutable) _mutableAllocator;
 
-    this(this _)(T theMutable)
+    alias LocalAllocT = AffixAllocator!(RCIAllocator, RefCountedMutable);
+    alias SharedAllocT = AffixAllocator!(shared RCISharedAllocator, RefCountedMutable);
+    alias AllocT = Algebraic!(LocalAllocT, SharedAllocT);
+    private AllocT _mutableAllocator;
+
+    this(this Q)(T theMutable)
     {
-        this(theAllocator, theMutable);
+        static if (is(Q == immutable) || is(Q == const))
+        {
+            this(processAllocator, theMutable);
+        }
+        else
+        {
+            this(theAllocator, theMutable);
+        }
     }
 
-    this(this _)(RCIAllocator alloc, T theMutable)
+    this(A, this Q)(A alloc, T theMutable)
+    if (((is(Q == immutable) || is(Q == const)) && is(A == RCISharedAllocator))
+        || (!(is(Q == immutable) || is(Q == const)) && is(A == RCIAllocator)))
     {
-        auto t = AffixAllocator!(RCIAllocator, RefCountedMutable)(alloc);
+        static if (is(A == RCIAllocator))
+        {
+            auto t = LocalAllocT(alloc);
+        }
+        else
+        {
+            auto t = SharedAllocT(alloc);
+        }
         auto tSupport = (() @trusted => t.allocate(1))();
         () @trusted {
             t.prefix(tSupport)._alloc = alloc;
@@ -52,17 +74,32 @@ struct Mutable(T)
         }
     }
 
-    @trusted void addRef(AllocQual, SupportQual, this Qualified)(AllocQual alloc, SupportQual support)
+    auto ref allocator(this Q)()
     {
-        assert(support !is null);
+        alias alloc = _mutableAllocator;
         static if (is(Qualified == immutable) || is(Qualified == const))
         {
-            auto p = cast(shared uint*)(&alloc.prefix(support)._rc);
+            assert(alloc.peek!(SharedAllocT) !is null);
+            return alloc.get!(SharedAllocT);
+        }
+        else
+        {
+            assert(alloc.peek!(LocalAllocT) !is null);
+            return alloc.get!(LocalAllocT);
+        }
+    }
+
+    @trusted void addRef(AllocQ, SupportQ, this Q)(AllocQ alloc, SupportQ support)
+    {
+        assert(support !is null);
+        static if (is(Q == immutable) || is(Q == const))
+        {
+            auto p = cast(shared uint*)(&allocator.prefix(support)._rc);
             atomicOp!"+="(*p, 1);
         }
         else
         {
-            ++alloc.prefix(support)._rc;
+            ++allocator.prefix(support)._rc;
         }
     }
 
@@ -70,15 +107,23 @@ struct Mutable(T)
     {
         if (_mutableSupport !is null)
         {
-            if (_mutableAllocator.prefix(_mutableSupport)._rc == 0)
+            if (allocator.prefix(_mutableSupport)._rc == 0)
             {
-                auto origAlloc = _mutableAllocator.prefix(_mutableSupport)._alloc;
-                auto disposer = AffixAllocator!(RCIAllocator, RefCountedMutable)(origAlloc);
-                disposer.dispose(_mutableSupport);
+                auto origAlloc = allocator.prefix(_mutableSupport)._alloc;
+                if (_mutableAllocator.peek!(SharedAllocT) !is null)
+                {
+                    auto disposer = SharedAllocT(origAlloc.get!(RCISharedAllocator));
+                    disposer.dispose(_mutableSupport);
+                }
+                else
+                {
+                    auto disposer = LocalAllocT(origAlloc.get!(RCIAllocator));
+                    disposer.dispose(_mutableSupport);
+                }
             }
             else
             {
-                --_mutableAllocator.prefix(_mutableSupport)._rc;
+                --allocator.prefix(_mutableSupport)._rc;
             }
         }
     }
@@ -92,9 +137,6 @@ struct Mutable(T)
         }
         if (rhs._mutableSupport !is null)
         {
-            //() @trusted {
-                //++rhs._mutableAllocator.prefix(rhs._mutableSupport)._rc;
-            //}();
             addRef(rhs._mutableAllocator, rhs._mutableSupport);
         }
         __dtor();
@@ -112,26 +154,30 @@ struct Mutable(T)
     {
         static if (is(Q == immutable) || is(Q == const))
         {
-            //alias PayloadType = typeof(_mutableAllocator.prefix(_mutableSupport)._payload);
-            static if (is(Q == immutable))
-            {
-                alias PayloadType = shared(AffixAllocator!(shared RCISharedAllocator, ulong, void));
-            }
-            else
-            {
-                alias PayloadType = const(AffixAllocator!(shared RCISharedAllocator, ulong, void));
-            }
-            pragma(msg, "pld type is " ~ PayloadType.stringof);
-            return cast(shared PayloadType)(_mutableAllocator.prefix(_mutableSupport)._payload);
+            alias PayloadType = typeof(allocator.prefix(_mutableSupport)._payload);
+            //pragma(msg, "pld type is " ~ typeof(PayloadType).stringof);
+            return cast(shared PayloadType)(allocator.prefix(_mutableSupport)._payload);
         }
         else
         {
-            return _mutableAllocator.prefix(_mutableSupport)._payload;
+            return allocator.prefix(_mutableSupport)._payload;
         }
     }
 
     void set(T v)
     {
-        _mutableAllocator.prefix(_mutableSupport)._payload = v;
+        allocator.prefix(_mutableSupport)._payload = v;
     }
+}
+
+unittest
+{
+    import std.experimental.allocator : RCIAllocator, RCISharedAllocator, theAllocator, dispose;
+    import std.experimental.allocator.building_blocks.affix_allocator;
+    import std.variant : Algebraic;
+    auto a = Mutable!(RCIAllocator)(theAllocator, theAllocator);
+
+    //alias AllocT = Algebraic!(AffixAllocator!(RCIAllocator, int),
+                              //AffixAllocator!(shared RCISharedAllocator, int));
+    //AllocT _mutableAllocator;
 }
