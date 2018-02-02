@@ -45,35 +45,60 @@ struct SList(T)
 
     Node *_head;
 
-    alias MutableAlloc = AffixAllocator!(RCIAllocator, size_t);
+    alias LocalAllocT = AffixAllocator!(RCIAllocator, size_t);
+    alias SharedAllocT = AffixAllocator!(RCISharedAllocator, size_t);
+    alias MutableAlloc = Algebraic!(LocalAllocT, SharedAllocT);
     Mutable!MutableAlloc _ouroborosAllocator;
 
     /// Returns the actual allocator from ouroboros
-    @trusted ref auto allocator(this _)()
+    @trusted ref auto allocator(this Q)()
     {
-        assert(!_ouroborosAllocator.isNull);
-        return _ouroborosAllocator.get();
+        static if (is(Q == immutable) || is(Q == const))
+        {
+            assert(_ouroborsAllocator.peek!(SharedAllocT) !is null);
+            return _ouroborsAllocator.get!(SharedAllocT);
+        }
+        else
+        {
+            assert(_ouroborsAllocator.peek!(LocalAllocT) !is null);
+            return _ouroborsAllocator.get!(LocalAllocT);
+        }
     }
 
     /// Constructs the ouroboros allocator from allocator if the ouroboros
     //allocator wasn't previously set
     @trusted bool setAllocator(RCIAllocator allocator)
     {
-        if (_ouroborosAllocator.isNull)
+        if (_ouroborsAllocator.peek!(LocalAllocT) is null)
         {
             _ouroborosAllocator = Mutable!(MutableAlloc)(allocator,
-                    MutableAlloc(allocator));
+                    MutableAlloc(LocalAllocT(allocator)));
             return true;
         }
         return false;
     }
 
-    @trusted RCIAllocator getAllocator(this _)()
+    mixin template setSharedAllocator(RCISharedAllocator allocator)
     {
-        return _ouroborosAllocator.isNull ? RCIAllocator(null) : allocator().parent;
+        _ouroborosAllocator = Mutable!(MutableAlloc)(allocator,
+                MutableAlloc(SharedAllocT(allocator)));
     }
 
-    @trusted void addRef(QualNode, this Qualified)(QualNode node)
+    public @trusted auto ref getAllocator(this Q)()
+    {
+        static if (is(Q == immutable) || is(Q == const))
+        {
+            return _ouroborsAllocator.peek!(SharedAllocT) is null ?
+                        RCISharedAllocator(null) : allocator().parent;
+        }
+        else
+        {
+            return _ouroborsAllocator.peek!(LocalAllocT) is null ?
+                        RCIAllocator(null) : allocator().parent;
+        }
+    }
+
+    @trusted void addRef(QualNode, this Q)(QualNode node)
     {
         assert(node !is null);
         debug(CollectionSList)
@@ -81,7 +106,7 @@ struct SList(T)
             writefln("SList.addRef: Node %s has refcount: %s; will be: %s",
                     node._payload, *prefCount(node), *prefCount(node) + 1);
         }
-        static if (is(Qualified == immutable) || is(Qualified == const))
+        static if (is(Q == immutable) || is(Q == const))
         {
             atomicOp!"+="(*prefCount(node), 1);
         }
@@ -109,10 +134,10 @@ struct SList(T)
         }
     }
 
-    @trusted auto prefCount(QualNode, this Qualified)(QualNode node)
+    @trusted auto prefCount(QualNode, this Q)(QualNode node)
     {
         assert(node !is null);
-        static if (is(Qualified == immutable) || is(Qualified == const))
+        static if (is(Q == immutable) || is(Q == const))
         {
             return cast(shared size_t*)(&allocator.prefix(cast(void[Node.sizeof])(*node)));
         }
@@ -142,32 +167,51 @@ struct SList(T)
     }
 
 public:
-    this(this _)(RCIAllocator allocator)
+    this(A, this Q)(A allocator)
+    if (((is(Q == immutable) || is(Q == const)) && is(A == RCISharedAllocator))
+        || (!(is(Q == immutable) || is(Q == const)) && is(A == RCIAllocator)))
     {
         debug(CollectionSList)
         {
             writefln("SList.ctor: begin");
             scope(exit) writefln("SList.ctor: end");
         }
-        setAllocator(allocator);
+        static if (is(Q == immutable) || is(Q == const))
+        {
+            mixin setSharedAllocator!(allocator);
+        }
+        else
+        {
+            setAllocator(allocator);
+        }
     }
 
-    this(U, this Qualified)(U[] values...)
+    this(U, this Q)(U[] values...)
     if (isImplicitlyConvertible!(U, T))
     {
-        this(theAllocator, values);
+        static if (is(Q == immutable) || is(Q == const))
+        {
+            this(processAllocator, values);
+        }
+        else
+        {
+            this(theAllocator, values);
+        }
     }
 
-    this(U, this Qualified)(RCIAllocator allocator, U[] values...)
-    if (isImplicitlyConvertible!(U, T))
+    this(A, U, this Q)(A allocator, U[] values...)
+    if ((((is(Q == immutable) || is(Q == const)) && is(A == RCISharedAllocator))
+         || (!(is(Q == immutable) || is(Q == const)) && is(A == RCIAllocator)))
+         && isImplicitlyConvertible!(U, T))
     {
         debug(CollectionSList)
         {
             writefln("SList.ctor: begin");
             scope(exit) writefln("SList.ctor: end");
         }
-        static if (is(Qualified == immutable) || is(Qualified == const))
+        static if (is(Q == immutable) || is(Q == const))
         {
+            mixin setSharedAllocator!(allocator);
             mixin(immutableInsert("values"));
         }
         else
@@ -177,26 +221,36 @@ public:
         }
     }
 
-    this(Stuff, this Qualified)(Stuff stuff)
+    this(Stuff, this Q)(Stuff stuff)
     if (isInputRange!Stuff
         && isImplicitlyConvertible!(ElementType!Stuff, T)
         && !is(Stuff == T[]))
     {
-        this(theAllocator, stuff);
+        static if (is(Q == immutable) || is(Q == const))
+        {
+            this(processAllocator, stuff);
+        }
+        else
+        {
+            this(theAllocator, stuff);
+        }
     }
 
-    this(Stuff, this Qualified)(RCIAllocator allocator, Stuff stuff)
-    if (isInputRange!Stuff
-        && isImplicitlyConvertible!(ElementType!Stuff, T)
-        && !is(Stuff == T[]))
+    this(A, Stuff, this Q)(A allocator, Stuff stuff)
+    if ((((is(Q == immutable) || is(Q == const)) && is(A == RCISharedAllocator))
+         || (!(is(Q == immutable) || is(Q == const)) && is(A == RCIAllocator)))
+         && isInputRange!Stuff
+         && isImplicitlyConvertible!(ElementType!Stuff, T)
+         && !is(Stuff == T[]))
     {
         debug(CollectionSList)
         {
             writefln("SList.ctor: begin");
             scope(exit) writefln("SList.ctor: end");
         }
-        static if (is(Qualified == immutable) || is(Qualified == const))
+        static if (is(Q == immutable) || is(Q == const))
         {
+            mixin setSharedAllocator!(allocator);
             mixin(immutableInsert("stuff"));
         }
         else
