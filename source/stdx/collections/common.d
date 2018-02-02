@@ -74,18 +74,17 @@ struct Mutable(T)
         }
     }
 
-    auto ref allocator(this Q)()
+    @trusted auto ref allocator(this Q)()
     {
-        alias alloc = _mutableAllocator;
-        static if (is(Qualified == immutable) || is(Qualified == const))
+        static if (is(Q == immutable) || is(Q == const))
         {
-            assert(alloc.peek!(SharedAllocT) !is null);
-            return alloc.get!(SharedAllocT);
+            assert(_mutableAllocator.peek!(SharedAllocT) !is null);
+            return _mutableAllocator.get!(SharedAllocT);
         }
         else
         {
-            assert(alloc.peek!(LocalAllocT) !is null);
-            return alloc.get!(LocalAllocT);
+            assert(_mutableAllocator.peek!(LocalAllocT) !is null);
+            return _mutableAllocator.get!(LocalAllocT);
         }
     }
 
