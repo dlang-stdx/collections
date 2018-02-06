@@ -1,3 +1,4 @@
+///
 module stdx.collections.slist;
 
 import stdx.collections.common;
@@ -13,6 +14,7 @@ version(unittest)
     private alias SCAlloc = StatsCollector!(Mallocator, Options.bytesUsed);
 }
 
+///
 struct SList(T)
 {
     import std.experimental.allocator : IAllocator, theAllocator, make, dispose;
@@ -152,12 +154,14 @@ public:
         setAllocator(allocator);
     }
 
+    ///
     this(U, this Qualified)(U[] values...)
     if (isImplicitlyConvertible!(U, T))
     {
         this(theAllocator, values);
     }
 
+    /// ditto
     this(U, this Qualified)(IAllocator allocator, U[] values...)
     if (isImplicitlyConvertible!(U, T))
     {
@@ -177,6 +181,7 @@ public:
         }
     }
 
+    /// ditto
     this(Stuff, this Qualified)(Stuff stuff)
     if (isInputRange!Stuff
         && isImplicitlyConvertible!(ElementType!Stuff, T)
@@ -185,6 +190,7 @@ public:
         this(theAllocator, stuff);
     }
 
+    /// ditto
     this(Stuff, this Qualified)(IAllocator allocator, Stuff stuff)
     if (isInputRange!Stuff
         && isImplicitlyConvertible!(ElementType!Stuff, T)
@@ -249,6 +255,7 @@ public:
         destroyUnused();
     }
 
+    ///
     void destroyUnused()
     {
         debug(CollectionSList)
@@ -275,6 +282,7 @@ public:
         }
     }
 
+    ///
     bool isUnique(this _)()
     {
         debug(CollectionSList)

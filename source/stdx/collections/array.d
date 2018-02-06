@@ -1,3 +1,4 @@
+///
 module stdx.collections.array;
 
 import stdx.collections.common;

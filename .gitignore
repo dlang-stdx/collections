@@ -1,2 +1,5 @@
 .dub
 collections-test-library
+.generated
+web
+*.html

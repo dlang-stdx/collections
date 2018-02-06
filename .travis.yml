@@ -9,7 +9,8 @@ matrix:
     - d: dmd
       script:
         - dub test --compiler=$DC --build=unittest-cov
-        - dub build -b ddox
+        #- dub build -b ddox
+        - make -f doc/Makefile html
       addons:
           apt:
               packages:
@@ -17,7 +18,7 @@ matrix:
       after_success:
         - bash <(curl -s https://codecov.io/bash)
       deploy:
-          local_dir: docs
+          local_dir: web
           provider: pages
           skip_cleanup: true
           github_token: $GH_REPO_TOKEN
