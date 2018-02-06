@@ -1,14 +1,28 @@
 sudo: false
 os:
- - linux
+    - linux
 language: d
 d:
- - ldc
-
+    - ldc
 matrix:
   include:
     - d: dmd
       script:
         - dub test --compiler=$DC --build=unittest-cov
+        - dub build -b ddox
+      addons:
+          apt:
+              packages:
+                  - libevent-dev
       after_success:
         - bash <(curl -s https://codecov.io/bash)
+      deploy:
+          local_dir: docs
+          provider: pages
+          skip_cleanup: true
+          github_token: $GH_REPO_TOKEN
+          on:
+              branch: master
+env:
+  global:
+    secure: BXASX8LWjLhUpKEkFACTUj9PhJ4aAf+K+SZAWL93DMevfRlQavAB4s7NEBZHl4uZeYw35MmnyHq8gxehLCdAsJyMIgw4tpg9c6wSV49K1kpIzwcahUAvaTMCMkzwJ8pTMF3RJo2T/VH5hPQwnCammbbzabG5UAT7i7smFi5+FjZ3wmYzKe/Enjiq9+DCOIhQmNBEnVrF8J2wuJAE6Sg7mrJEThP9CFS1nMJcZ3B1HNfWKK8gDW95K5qnGksAt+LFfFE6T/Rfd0Br3URVG7h4WInMtlWu4qMLjpJq0fvSM3dQazXddLjlgMEppdwxg7x4cmDjd1EHPY3MefWUOK9l2n2+E2LLIsaZ6vMQVmOFexgauniap8cUVWpDoPaYfOeWjhljWwC3EVmynl6UbfQJGE8cpA6SsSnJhlqhxwjVfcKz6BQ24/e9Krs99Hr898+P1h99JbqgwpaLPbacSqKyKlUXPNYMOd56bpiUfiP501rqjj9PPZx2KHFEuQ5OMbpx/uPwp7apP5cmnRQo0QzT17hsXdjJ7wRLK8+a4y+ZIRb6k+/E0tqoCIMFfndrnf5EhnU56VR/ghqThg6fe/puslgAUQCBoQM1cAKslfM89LxXQp0QPlB8pYQrp28Kvf6H8I2wGku8O24lZ/5nIj0YL5zQ4gaayJeXDQWwli/uwug=
