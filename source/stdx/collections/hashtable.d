@@ -1,3 +1,4 @@
+///
 module stdx.collections.hashtable;
 
 import stdx.collections.common;
