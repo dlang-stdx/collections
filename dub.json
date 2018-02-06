@@ -6,5 +6,10 @@
     "targetType": "library",
     "description": "A new collections framework for the D Standard Library",
     "copyright": "The D Language Foundation",
-    "license": "BSL-1.0"
+    "license": "BSL-1.0",
+    "-ddoxFilterArgs": [
+            "--unittest-examples",
+            "--min-protection=Protected"
+    ],
+    "-ddoxTool": "scod"
 }
