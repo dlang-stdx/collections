@@ -1,7 +1,8 @@
 module stdx.collections.hashtable;
 
 import stdx.collections.common;
-import std.experimental.allocator : IAllocator, theAllocator, make, dispose;
+import std.experimental.allocator : RCIAllocator, RCISharedAllocator,
+       theAllocator, processAllocator, make, dispose;
 import std.experimental.allocator.building_blocks.affix_allocator;
 import std.experimental.allocator.gc_allocator;
 //import stdx.collections.pair : Pair;
@@ -27,6 +28,7 @@ struct Hashtable(K, V)
     import std.traits : isImplicitlyConvertible, Unqual, isArray;
     import std.range.primitives : isInputRange, isForwardRange, isInfinite,
            ElementType, hasLength;
+    import std.variant : Algebraic;
     import std.conv : emplace;
     import std.typecons : Tuple, Nullable;
     import core.atomic : atomicOp;
@@ -37,25 +39,35 @@ private:
     Array!size_t _numElems; // This needs to be ref counted
     static enum double loadFactor = 0.75;
 
-    alias MutableAlloc = AffixAllocator!(IAllocator, size_t);
+    alias LocalAllocT = AffixAllocator!(RCIAllocator, size_t);
+    alias SharedAllocT = AffixAllocator!(RCISharedAllocator, size_t);
+    alias MutableAlloc = Algebraic!(LocalAllocT, SharedAllocT);
     Mutable!MutableAlloc _ouroborosAllocator;
 
     /// Returns the actual allocator from ouroboros
-    @trusted ref auto allocator(this _)()
+    @trusted ref auto allocator(this Q)()
     {
-        assert(!_ouroborosAllocator.isNull);
-        return _ouroborosAllocator.get();
+        static if (is(Q == immutable) || is(Q == const))
+        {
+            assert(_ouroborsAllocator.peek!(SharedAllocT) !is null);
+            return _ouroborsAllocator.get!(SharedAllocT);
+        }
+        else
+        {
+            assert(_ouroborsAllocator.peek!(LocalAllocT) !is null);
+            return _ouroborsAllocator.get!(LocalAllocT);
+        }
     }
 
 public:
     /// Constructs the ouroboros allocator from allocator if the ouroboros
     //allocator wasn't previously set
-    @trusted bool setAllocator(IAllocator allocator)
+    @trusted bool setAllocator(RCIAllocator allocator)
     {
-        if (_ouroborosAllocator.isNull)
+        if (_ouroborsAllocator.peek!(LocalAllocT) is null)
         {
             _ouroborosAllocator = Mutable!(MutableAlloc)(allocator,
-                    MutableAlloc(allocator));
+                    MutableAlloc(LocalAllocT(allocator)));
             _buckets = Array!(SList!(KVPair))(allocator);
             _numElems = Array!size_t(allocator);
             return true;
@@ -63,43 +75,80 @@ public:
         return false;
     }
 
-    @trusted IAllocator getAllocator(this _)()
+    mixin template setSharedAllocator(RCISharedAllocator allocator)
     {
-        return _ouroborosAllocator.isNull ? null : allocator().parent;
+        _ouroborosAllocator = Mutable!(MutableAlloc)(allocator,
+                MutableAlloc(SharedAllocT(allocator)));
     }
 
-    this(this _)(IAllocator allocator)
+    public @trusted auto ref getAllocator(this Q)()
+    {
+        static if (is(Q == immutable) || is(Q == const))
+        {
+            return _ouroborsAllocator.peek!(SharedAllocT) is null ?
+                        RCISharedAllocator(null) : allocator().parent;
+        }
+        else
+        {
+            return _ouroborsAllocator.peek!(LocalAllocT) is null ?
+                        RCIAllocator(null) : allocator().parent;
+        }
+    }
+
+    this(A, this Q)(A allocator)
+    if (((is(Q == immutable) || is(Q == const)) && is(A == RCISharedAllocator))
+        || (!(is(Q == immutable) || is(Q == const)) && is(A == RCIAllocator)))
     {
         debug(CollectionHashtable)
         {
             writefln("Array.ctor: begin");
             scope(exit) writefln("Array.ctor: end");
         }
-        setAllocator(allocator);
+        static if (is(Q == immutable) || is(Q == const))
+        {
+            mixin setSharedAllocator!(allocator);
+        }
+        else
+        {
+            setAllocator(allocator);
+        }
     }
 
-    this(U, this Qualified)(U assocArr)
+    this(U, this Q)(U assocArr)
     if (is(U == Value[Key], Value : V, Key : K))
     {
-        this(theAllocator, assocArr);
+        static if (is(Q == immutable) || is(Q == const))
+        {
+            this(processAllocator, assocArr);
+        }
+        else
+        {
+            this(theAllocator, assocArr);
+        }
     }
 
-    this(U, this Qualified)(IAllocator allocator, U assocArr)
-    if (is(U == Value[Key], Value : V, Key : K))
+    this(A, U, this Q)(A allocator, U assocArr)
+    if ((((is(Q == immutable) || is(Q == const)) && is(A == RCISharedAllocator))
+         || (!(is(Q == immutable) || is(Q == const)) && is(A == RCIAllocator)))
+         && is(U == Value[Key], Value : V, Key : K))
     {
         debug(CollectionHashtable)
         {
             writefln("Hashtable.ctor: begin");
             scope(exit) writefln("Hashtable.ctor: end");
         }
-        static if (is(Qualified == immutable) || is(Qualified == const))
+        static if (is(Q == immutable) || is(Q == const))
         {
             // Build a mutable hashtable on the stack and pass ownership to this
+
+            // TODO: This, as is, will fail big time
             auto tmp = Hashtable!(K, V)(allocator, assocArr);
             _buckets = cast(typeof(_buckets))(tmp._buckets);
             _numElems = cast(typeof(_numElems))(tmp._numElems);
-            auto tmpAlloc = Mutable!(MutableAlloc)(allocator, MutableAlloc(allocator));
-            _ouroborosAllocator = (() @trusted => cast(immutable)(tmpAlloc))();
+
+            mixin setSharedAllocator!(allocator);
+            //auto tmpAlloc = Mutable!(MutableAlloc)(allocator, MutableAlloc(allocator));
+            //_ouroborosAllocator = (() @trusted => cast(immutable)(tmpAlloc))();
         }
         else
         {
