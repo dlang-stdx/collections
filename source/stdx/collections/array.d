@@ -42,13 +42,13 @@ struct Array(T)
     {
         static if (is(Q == immutable) || is(Q == const))
         {
-            assert(_ouroborsAllocator.peek!(SharedAllocT) !is null);
-            return _ouroborsAllocator.get!(SharedAllocT);
+            assert(_ouroborosAllocator.get.peek!(SharedAllocT) !is null);
+            return _ouroborosAllocator.get.get!(SharedAllocT);
         }
         else
         {
-            assert(_ouroborsAllocator.peek!(LocalAllocT) !is null);
-            return _ouroborsAllocator.get!(LocalAllocT);
+            assert(_ouroborosAllocator.get.peek!(LocalAllocT) !is null);
+            return _ouroborosAllocator.get.get!(LocalAllocT);
         }
     }
 
@@ -56,7 +56,7 @@ struct Array(T)
     //allocator wasn't previously set
     @trusted bool setAllocator(RCIAllocator allocator)
     {
-        if (_ouroborsAllocator.peek!(LocalAllocT) is null)
+        if (_ouroborosAllocator.get.peek!(LocalAllocT) is null)
         {
             _ouroborosAllocator = Mutable!(MutableAlloc)(allocator,
                     MutableAlloc(LocalAllocT(allocator)));
@@ -75,12 +75,12 @@ struct Array(T)
     {
         static if (is(Q == immutable) || is(Q == const))
         {
-            return _ouroborsAllocator.peek!(SharedAllocT) is null ?
+            return _ouroborosAllocator.get.peek!(SharedAllocT) is null ?
                         RCISharedAllocator(null) : allocator().parent;
         }
         else
         {
-            return _ouroborsAllocator.peek!(LocalAllocT) is null ?
+            return _ouroborosAllocator.get.peek!(LocalAllocT) is null ?
                         RCIAllocator(null) : allocator().parent;
         }
     }

@@ -29,7 +29,7 @@ struct Mutable(T)
     private void[] _mutableSupport;
 
     alias LocalAllocT = AffixAllocator!(RCIAllocator, RefCountedMutable);
-    alias SharedAllocT = AffixAllocator!(shared RCISharedAllocator, RefCountedMutable);
+    alias SharedAllocT = AffixAllocator!(RCISharedAllocator, RefCountedMutable);
     alias AllocT = Algebraic!(LocalAllocT, SharedAllocT);
     private AllocT _mutableAllocator;
 
@@ -171,10 +171,13 @@ struct Mutable(T)
 
 unittest
 {
-    import std.experimental.allocator : RCIAllocator, RCISharedAllocator, theAllocator, dispose;
+    import std.experimental.allocator : RCIAllocator, RCISharedAllocator,
+           theAllocator, processAllocator, dispose;
     import std.experimental.allocator.building_blocks.affix_allocator;
     import std.variant : Algebraic;
-    auto a = Mutable!(RCIAllocator)(theAllocator, theAllocator);
+    //auto a = Mutable!(RCISharedAllocator)(processAllocator, processAllocator);
+    auto a = immutable Mutable!(RCISharedAllocator)(processAllocator);
+    //auto a = shared Mutable!(RCIAllocator)(theAllocator, theAllocator);
 
     //alias AllocT = Algebraic!(AffixAllocator!(RCIAllocator, int),
                               //AffixAllocator!(shared RCISharedAllocator, int));
