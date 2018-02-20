@@ -21,7 +21,7 @@ struct Mutable(T)
 
     private struct RefCountedMutable
     {
-        DualAllocator!(RCIAllocator, RCISharedAllocator) _alloc;
+        OldDualAllocator!(RCIAllocator, RCISharedAllocator) _alloc;
         T _payload;
         size_t _rc;
     }
@@ -32,8 +32,8 @@ struct Mutable(T)
     alias SharedAllocT = shared AffixAllocator!(RCISharedAllocator, RefCountedMutable);
     //alias AllocT = Algebraic!(LocalAllocT, SharedAllocT);
     alias AllocT = DualAllocator!(LocalAllocT, SharedAllocT);
-    pragma(msg, AllocT.stringof);
-    private AllocT _mutableAllocator;
+    //pragma(msg, AllocT.stringof);
+    //private AllocT _mutableAllocator;
 
     this(this Q)(T theMutable)
     {
@@ -44,6 +44,7 @@ struct Mutable(T)
         else
         {
             this(theAllocator, theMutable);
+            pragma(msg, "JAA");
         }
     }
 
@@ -54,6 +55,7 @@ struct Mutable(T)
         static if (is(A == RCIAllocator))
         {
             auto t = LocalAllocT(alloc);
+            pragma(msg, "EDI JAA");
         }
         else
         {
@@ -63,46 +65,49 @@ struct Mutable(T)
         () @trusted {
             pragma(msg, typeof(t.prefix(tSupport)._alloc).stringof);
             pragma(msg, typeof(alloc).stringof);
-            t.prefix(tSupport)._alloc = alloc;
+            t.prefix(tSupport)._alloc = OldDualAllocator!(RCIAllocator, RCISharedAllocator)(alloc);
+            import std.stdio;
+            //writeln(t.prefix(tSupport)._alloc.peek!(RCISharedAllocator) is null);
+                //if (origAlloc.peek!(RCISharedAllocator) !is null)
             t.prefix(tSupport)._payload = theMutable;
         }();
         _mutableSupport = (() @trusted => cast(typeof(_mutableSupport))(tSupport))();
-        _mutableAllocator = (() @trusted => cast(typeof(_mutableAllocator))(t))();
+        //_mutableAllocator = (() @trusted => cast(typeof(_mutableAllocator))(t))();
     }
 
     this(this) @trusted
     {
         if (_mutableSupport !is null)
         {
-            addRef(_mutableAllocator, _mutableSupport);
+            addRef(_mutableSupport);
         }
     }
 
-    @trusted auto ref allocator(this Q)()
-    {
-        static if (is(Q == immutable) || is(Q == const))
-        {
-            assert(_mutableAllocator.peek!(SharedAllocT) !is null);
-            return _mutableAllocator.get!(SharedAllocT);
-        }
-        else
-        {
-            assert(_mutableAllocator.peek!(LocalAllocT) !is null);
-            return _mutableAllocator.get!(LocalAllocT);
-        }
-    }
+    //@trusted auto ref allocator(this Q)()
+    //{
+        //static if (is(Q == immutable) || is(Q == const))
+        //{
+            //assert(_mutableAllocator.peek!(SharedAllocT) !is null);
+            //return _mutableAllocator.get!(SharedAllocT);
+        //}
+        //else
+        //{
+            //assert(_mutableAllocator.peek!(LocalAllocT) !is null);
+            //return _mutableAllocator.get!(LocalAllocT);
+        //}
+    //}
 
-    @trusted void addRef(AllocQ, SupportQ, this Q)(AllocQ alloc, SupportQ support)
+    @trusted void addRef(SupportQ, this Q)(SupportQ support)
     {
         assert(support !is null);
         static if (is(Q == immutable) || is(Q == const))
         {
-            auto p = cast(shared uint*)(&allocator.prefix(support)._rc);
+            auto p = cast(shared uint*)(&SharedAllocT.prefix(support)._rc);
             atomicOp!"+="(*p, 1);
         }
         else
         {
-            ++allocator.prefix(support)._rc;
+            ++LocalAllocT.prefix(support)._rc;
         }
     }
 
@@ -110,11 +115,13 @@ struct Mutable(T)
     {
         if (_mutableSupport !is null)
         {
-            if (allocator.prefix(_mutableSupport)._rc == 0)
+            if (LocalAllocT.prefix(_mutableSupport)._rc == 0)
             {
-                auto origAlloc = allocator.prefix(_mutableSupport)._alloc;
-                if (_mutableAllocator.peek!(SharedAllocT) !is null)
+                auto origAlloc = LocalAllocT.prefix(_mutableSupport)._alloc;
+                if (origAlloc.peek!(RCISharedAllocator) !is null)
                 {
+                    import std.stdio;
+                    writeln("Here");
                     auto disposer = SharedAllocT(origAlloc.get!(RCISharedAllocator));
                     disposer.dispose(_mutableSupport);
                 }
@@ -126,7 +133,7 @@ struct Mutable(T)
             }
             else
             {
-                --allocator.prefix(_mutableSupport)._rc;
+                --LocalAllocT.prefix(_mutableSupport)._rc;
             }
         }
     }
@@ -140,11 +147,11 @@ struct Mutable(T)
         }
         if (rhs._mutableSupport !is null)
         {
-            addRef(rhs._mutableAllocator, rhs._mutableSupport);
+            addRef(rhs._mutableSupport);
         }
         __dtor();
         _mutableSupport = rhs._mutableSupport;
-        _mutableAllocator = rhs._mutableAllocator;
+        //_mutableAllocator = rhs._mutableAllocator;
         return this;
     }
 
@@ -159,17 +166,17 @@ struct Mutable(T)
         {
             alias PayloadType = typeof(allocator.prefix(_mutableSupport)._payload);
             //pragma(msg, "pld type is " ~ typeof(PayloadType).stringof);
-            return cast(shared PayloadType)(allocator.prefix(_mutableSupport)._payload);
+            return cast(shared PayloadType)(SharedAllocT.prefix(_mutableSupport)._payload);
         }
         else
         {
-            return allocator.prefix(_mutableSupport)._payload;
+            return LocalAllocT.prefix(_mutableSupport)._payload;
         }
     }
 
     void set(T v)
     {
-        allocator.prefix(_mutableSupport)._payload = v;
+        LocalAllocT.prefix(_mutableSupport)._payload = v;
     }
 }
 
@@ -179,7 +186,7 @@ struct Mutable(T)
            theAllocator, processAllocator, dispose;
     import std.experimental.allocator.building_blocks.affix_allocator;
     import std.variant : Algebraic;
-    //auto a = Mutable!(RCISharedAllocator)(processAllocator, processAllocator);
+    //auto a = Mutable!(RCIAllocator)(theAllocator);
     //auto a = immutable Mutable!(RCISharedAllocator)(processAllocator);
     //auto a = shared Mutable!(RCIAllocator)(theAllocator, theAllocator);
     RCISharedAllocator al;
@@ -260,7 +267,7 @@ struct OldDualAllocator(LocalAllocT, SharedAllocT)
     {
         static if (is(T == SharedAllocT))
         {
-            assert(_isShared);
+            //assert(_isShared);
             return _alloc.sharedAlloc.isNull ? null : &_alloc.sharedAlloc;
         }
         else
@@ -292,9 +299,9 @@ struct OldDualAllocator(LocalAllocT, SharedAllocT)
 
     auto a = OldDualAllocator!(RCIAllocator, RCISharedAllocator)(theAllocator);
     assert(!a._isShared);
-    //assert(a.peek!(RCISharedAllocator)() !is null);
+    assert(a.peek!(RCISharedAllocator)() !is null);
     //assert(a.get!(RCISharedAllocator).isNull);
-    //pragma(msg, typeof(a.peek!(RCIAllocator)()).stringof);
+    pragma(msg, typeof(a.peek!(RCIAllocator)()).stringof);
 
     auto b = immutable OldDualAllocator!(RCIAllocator, RCISharedAllocator)(processAllocator);
     assert(b._isShared);
