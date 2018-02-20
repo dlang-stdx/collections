@@ -21,7 +21,7 @@ struct Mutable(T)
 
     private struct RefCountedMutable
     {
-        Algebraic!(RCIAllocator, RCISharedAllocator) _alloc;
+        DualAllocator!(RCIAllocator, RCISharedAllocator) _alloc;
         T _payload;
         size_t _rc;
     }
@@ -29,8 +29,10 @@ struct Mutable(T)
     private void[] _mutableSupport;
 
     alias LocalAllocT = AffixAllocator!(RCIAllocator, RefCountedMutable);
-    alias SharedAllocT = AffixAllocator!(RCISharedAllocator, RefCountedMutable);
-    alias AllocT = Algebraic!(LocalAllocT, SharedAllocT);
+    alias SharedAllocT = shared AffixAllocator!(RCISharedAllocator, RefCountedMutable);
+    //alias AllocT = Algebraic!(LocalAllocT, SharedAllocT);
+    alias AllocT = DualAllocator!(LocalAllocT, SharedAllocT);
+    pragma(msg, AllocT.stringof);
     private AllocT _mutableAllocator;
 
     this(this Q)(T theMutable)
@@ -178,13 +180,12 @@ struct Mutable(T)
     import std.experimental.allocator.building_blocks.affix_allocator;
     import std.variant : Algebraic;
     //auto a = Mutable!(RCISharedAllocator)(processAllocator, processAllocator);
-    //auto a = const Mutable!(RCISharedAllocator)(processAllocator);
+    //auto a = immutable Mutable!(RCISharedAllocator)(processAllocator);
     //auto a = shared Mutable!(RCIAllocator)(theAllocator, theAllocator);
     RCISharedAllocator al;
     assert(al.isNull);
     al = processAllocator();
     Algebraic!(RCIAllocator, RCISharedAllocator) _alloc;
-    pragma(msg, Algebraic!(RCIAllocator, RCISharedAllocator).sizeof);
     //_alloc = al;
 
     //alias AllocT = Algebraic!(AffixAllocator!(RCIAllocator, int),
@@ -192,7 +193,38 @@ struct Mutable(T)
     //AllocT _mutableAllocator;
 }
 
-struct DualAllocator(LocalAllocT, SharedAllocT)
+@safe unittest
+{
+    import std.experimental.allocator : RCIAllocator, RCISharedAllocator,
+           theAllocator, processAllocator, dispose;
+    import std.experimental.allocator.building_blocks.affix_allocator;
+
+    struct RefCountedMutable(T)
+    {
+        DualAllocator!(RCIAllocator, RCISharedAllocator) _alloc;
+        T _payload;
+        size_t _rc;
+    }
+
+    //alias SharedAllocT = shared AffixAllocator!(RCISharedAllocator, RefCountedMutable!RCISharedAllocator);
+    //pragma(msg, is(RCISharedAllocator == shared));
+    //SharedAllocT a = SharedAllocT(processAllocator);
+    //() @trusted shared {
+        //auto buf = a.allocate(10);
+        //assert(buf.length == 10);
+    //}();
+
+    alias T = RCIAllocator;
+    alias LocalAllocT = AffixAllocator!(RCIAllocator, RefCountedMutable!T);
+    alias TT = RCISharedAllocator;
+    alias SharedAllocT = shared AffixAllocator!(RCISharedAllocator, RefCountedMutable!TT);
+    //alias AllocT = Algebraic!(LocalAllocT, SharedAllocT);
+    //alias AllocT = DualAllocator!(LocalAllocT, SharedAllocT);
+    alias AllocT = OldDualAllocator!(LocalAllocT, SharedAllocT);
+    AllocT _mutableAllocator;
+}
+
+struct OldDualAllocator(LocalAllocT, SharedAllocT)
 {
     import std.experimental.allocator : RCIAllocator, RCISharedAllocator;
     import std.traits : Unqual;
@@ -256,28 +288,245 @@ struct DualAllocator(LocalAllocT, SharedAllocT)
 {
     import std.experimental.allocator : RCIAllocator, RCISharedAllocator,
            theAllocator, processAllocator, dispose;
+    import std.exception : enforce;
 
-    auto a = DualAllocator!(RCIAllocator, RCISharedAllocator)(theAllocator);
+    auto a = OldDualAllocator!(RCIAllocator, RCISharedAllocator)(theAllocator);
     assert(!a._isShared);
     //assert(a.peek!(RCISharedAllocator)() !is null);
     //assert(a.get!(RCISharedAllocator).isNull);
     //pragma(msg, typeof(a.peek!(RCIAllocator)()).stringof);
 
-    auto b = immutable DualAllocator!(RCIAllocator, RCISharedAllocator)(processAllocator);
+    auto b = immutable OldDualAllocator!(RCIAllocator, RCISharedAllocator)(processAllocator);
     assert(b._isShared);
-    assert(b.get!(RCISharedAllocator).isNull);
+    assert(!b.get!(RCISharedAllocator).isNull);
     assert(!b.get!(RCIAllocator).isNull);
 
-    DualAllocator!(RCIAllocator, RCISharedAllocator) c;
-    assert(!c.get!(RCIAllocator)().isNull());
-    pragma(msg, DualAllocator!(RCIAllocator, RCISharedAllocator).sizeof);
-    pragma(msg, RCIAllocator.sizeof);
-    pragma(msg, RCISharedAllocator.sizeof);
+    OldDualAllocator!(RCIAllocator, RCISharedAllocator) c;
+    assert(c.get!(RCIAllocator).isNull);
+}
 
-    union Allocator
+struct DualAllocator(LocalAllocT, SharedAllocT)
+{
+    import std.experimental.allocator : RCIAllocator, RCISharedAllocator;
+    import std.typecons : Ternary;
+    import std.traits : Unqual;
+
+    private LocalAllocT localAlloc;
+    private SharedAllocT sharedAlloc;
+
+    this(A, this Q)(A alloc) @trusted
     {
-        RCIAllocator localAlloc;
-        RCISharedAllocator sharedAlloc;
+        static if (is(Q == immutable))
+        {
+            sharedAlloc = cast(typeof(sharedAlloc)) alloc;
+            //sharedAlloc = alloc;
+        }
+        else
+        {
+            localAlloc = alloc;
+        }
     }
-    pragma(msg, Allocator.sizeof);
+
+    this(this) inout {}
+
+    auto ref opAssign(A)(A rhs)
+    if (is(A == LocalAllocT) || is(A == SharedAllocT))
+    {
+        static if (is(A == shared))
+        {
+            pragma(msg, "JAAAAA");
+            sharedAlloc = rhs;
+        }
+        else
+        {
+            localAlloc = rhs;
+        }
+        return this;
+    }
+
+    // Only works for stateful allocators
+    inout(T)* peek(T)() inout @trusted
+    if (is(T == LocalAllocT) || is(T == SharedAllocT))
+    {
+        static if (is(T == SharedAllocT))
+        {
+            alias ST = typeof(sharedAlloc);
+            return sharedAlloc == ST.init ? null : &sharedAlloc;
+        }
+        else
+        {
+            alias LT = typeof(localAlloc);
+            return localAlloc == LT.init ? null : &localAlloc;
+        }
+    }
+
+    auto ref get(T, this _)()
+    if (is(T == LocalAllocT) || is(T == SharedAllocT))
+    {
+        static if (is(T == SharedAllocT))
+        {
+            return sharedAlloc;
+        }
+        else
+        {
+            return localAlloc;
+        }
+    }
+
+    //Forward to thread local allocator
+
+    //@property uint alignment()
+    //{
+        //return localAlloc.alignment();
+    //}
+
+    //size_t goodAllocSize(size_t s)
+    //{
+        //return localAlloc.goodAllocSize(s);
+    //}
+
+    void[] allocate(size_t n)
+    {
+        return localAlloc.allocate(n);
+    }
+
+    //void[] alignedAllocate(size_t n, uint a)
+    //{
+        //return localAlloc.alignedAllocate(n, a);
+    //}
+
+    //void[] allocateAll()
+    //{
+        //return localAlloc.allocateAll();
+    //}
+
+    //bool expand(ref void[] b, size_t size)
+    //{
+        //return localAlloc.expand(b, size);
+    //}
+
+    //bool reallocate(ref void[] b, size_t size)
+    //{
+        //return localAlloc.reallocate(b, size);
+    //}
+
+    //bool alignedReallocate(ref void[] b, size_t size, uint alignment)
+    //{
+        //return localAlloc.alignedReallocate(b, size, alignment);
+    //}
+
+    //Ternary owns(void[] b)
+    //{
+        //return localAlloc.owns(b);
+    //}
+
+    //Ternary resolveInternalPointer(const void* p, ref void[] result)
+    //{
+        //return localAlloc.resolveInternalPointer(p, result);
+    //}
+
+    bool deallocate(void[] b)
+    {
+        return localAlloc.deallocate(b);
+    }
+
+    //bool deallocateAll()
+    //{
+        //return localAlloc.deallocateAll();
+    //}
+
+    //Ternary empty()
+    //{
+        //return localAlloc.empty();
+    //}
+
+
+    // Forward to shared allocator
+
+    //@property uint alignment() shared
+    //{
+        //return sharedAlloc.alignment();
+    //}
+
+    //size_t goodAllocSize(size_t s) shared
+    //{
+        //return sharedAlloc.goodAllocSize(s);
+    //}
+
+    void[] allocate(size_t n) shared
+    {
+        return sharedAlloc.allocate(n);
+    }
+
+    //void[] alignedAllocate(size_t n, uint a) shared
+    //{
+        //return sharedAlloc.alignedAllocate(n, a);
+    //}
+
+    //void[] allocateAll() shared
+    //{
+        //return sharedAlloc.allocateAll();
+    //}
+
+    //bool expand(ref void[] b, size_t size) shared
+    //{
+        //return sharedAlloc.expand(b, size);
+    //}
+
+    //bool reallocate(ref void[] b, size_t size) shared
+    //{
+        //return sharedAlloc.reallocate(b, size);
+    //}
+
+    //bool alignedReallocate(ref void[] b, size_t size, uint alignment) shared
+    //{
+        //return sharedAlloc.alignedReallocate(b, size, alignment);
+    //}
+
+    //Ternary owns(void[] b) shared
+    //{
+        //return sharedAlloc.owns(b);
+    //}
+
+    //Ternary resolveInternalPointer(const void* p, ref void[] result) shared
+    //{
+        //return sharedAlloc.resolveInternalPointer(p, result);
+    //}
+
+    bool deallocate(void[] b) shared
+    {
+        return sharedAlloc.deallocate(b);
+    }
+
+    //bool deallocateAll() shared
+    //{
+        //return sharedAlloc.deallocateAll();
+    //}
+
+    //Ternary empty() shared
+    //{
+        //return sharedAlloc.empty();
+    //}
+}
+
+@safe unittest
+{
+    import std.experimental.allocator : RCIAllocator, RCISharedAllocator,
+           theAllocator, processAllocator, dispose;
+    import std.exception : enforce;
+
+    auto a = DualAllocator!(RCIAllocator, RCISharedAllocator)(theAllocator);
+    assert(a.peek!(RCISharedAllocator) is null);
+    assert(a.peek!(RCIAllocator) !is null);
+    assert(a.get!(RCISharedAllocator).isNull);
+    assert(!a.get!(RCIAllocator).isNull);
+    //pragma(msg, typeof(a.peek!(RCIAllocator)()).stringof);
+
+    auto b = immutable DualAllocator!(RCIAllocator, RCISharedAllocator)(processAllocator);
+    //assert(b._isShared);
+    //assert(!b.get!(RCISharedAllocator).isNull);
+    //assert(!b.get!(RCIAllocator).isNull);
+
+    //OldDualAllocator!(RCIAllocator, RCISharedAllocator) c;
+    //assert(c.get!(RCIAllocator).isNull);
 }
