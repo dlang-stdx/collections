@@ -65,10 +65,8 @@ struct Mutable(T)
         () @trusted {
             pragma(msg, typeof(t.prefix(tSupport)._alloc).stringof);
             pragma(msg, typeof(alloc).stringof);
+            // TODO: this is opAssign
             t.prefix(tSupport)._alloc = OldDualAllocator!(RCIAllocator, RCISharedAllocator)(alloc);
-            import std.stdio;
-            //writeln(t.prefix(tSupport)._alloc.peek!(RCISharedAllocator) is null);
-                //if (origAlloc.peek!(RCISharedAllocator) !is null)
             t.prefix(tSupport)._payload = theMutable;
         }();
         _mutableSupport = (() @trusted => cast(typeof(_mutableSupport))(tSupport))();
@@ -82,20 +80,6 @@ struct Mutable(T)
             addRef(_mutableSupport);
         }
     }
-
-    //@trusted auto ref allocator(this Q)()
-    //{
-        //static if (is(Q == immutable) || is(Q == const))
-        //{
-            //assert(_mutableAllocator.peek!(SharedAllocT) !is null);
-            //return _mutableAllocator.get!(SharedAllocT);
-        //}
-        //else
-        //{
-            //assert(_mutableAllocator.peek!(LocalAllocT) !is null);
-            //return _mutableAllocator.get!(LocalAllocT);
-        //}
-    //}
 
     @trusted void addRef(SupportQ, this Q)(SupportQ support)
     {
@@ -120,8 +104,6 @@ struct Mutable(T)
                 auto origAlloc = LocalAllocT.prefix(_mutableSupport)._alloc;
                 if (origAlloc.peek!(RCISharedAllocator) !is null)
                 {
-                    import std.stdio;
-                    writeln("Here");
                     auto disposer = SharedAllocT(origAlloc.get!(RCISharedAllocator));
                     disposer.dispose(_mutableSupport);
                 }
@@ -258,16 +240,36 @@ struct OldDualAllocator(LocalAllocT, SharedAllocT)
         }
     }
 
-    //this(this);
+    this(this)
+    {
+        assert(!_isShared);
+        _alloc.localAlloc.__xpostblit();
+    }
 
-    //~this();
+    this(shared this) shared
+    {
+        assert(_isShared);
+        _alloc.sharedAlloc.__xpostblit();
+    }
+
+    ~this()
+    {
+        if(_isShared)
+        {
+            _alloc.sharedAlloc.__xdtor();
+        }
+        else
+        {
+            _alloc.localAlloc.__xdtor();
+        }
+    }
 
     inout(T)* peek(T)() inout
     if (is(T == LocalAllocT) || is(T == SharedAllocT))
     {
         static if (is(T == SharedAllocT))
+        //if (_isShared)
         {
-            //assert(_isShared);
             return _alloc.sharedAlloc.isNull ? null : &_alloc.sharedAlloc;
         }
         else
@@ -280,8 +282,8 @@ struct OldDualAllocator(LocalAllocT, SharedAllocT)
     if (is(T == LocalAllocT) || is(T == SharedAllocT))
     {
         static if (is(T == SharedAllocT))
+        //if (_isShared)
         {
-            assert(_isShared);
             return _alloc.sharedAlloc;
         }
         else
