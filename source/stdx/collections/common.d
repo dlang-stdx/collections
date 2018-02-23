@@ -682,6 +682,7 @@ struct MutableAlloc(Alloc)
     private void[] _mutableSupport;
 
     alias LocalAllocT = AffixAllocator!(Alloc, RefCountedMutable);
+    alias SharedAllocT = shared AffixAllocator!(Alloc, RefCountedMutable);
 
     this(this Q)(Alloc alloc)
     {
@@ -729,18 +730,9 @@ struct MutableAlloc(Alloc)
                 //move(LocalAllocT.prefix(_mutableSupport)._alloc, origAlloc);
                 pragma(msg, is(AT == shared));
                 AT origAlloc = LocalAllocT.prefix(_mutableSupport)._alloc;
-                static if (is(origAlloc == shared))
-                {
-                    auto disposer = shared LocalAllocT(origAlloc);
-                    pragma(msg, typeof(disposer).stringof);
-                    disposer.dispose(_mutableSupport);
-                }
-                else
-                {
-                    auto disposer = LocalAllocT(origAlloc);
-                    pragma(msg, typeof(disposer).stringof);
-                    disposer.dispose(_mutableSupport);
-                }
+                auto disposer = LocalAllocT(origAlloc);
+                pragma(msg, typeof(disposer).stringof);
+                disposer.deallocate(_mutableSupport);
             }
             else
             {
@@ -798,6 +790,6 @@ struct MutableAlloc(Alloc)
     import std.variant : Algebraic;
 
     auto a = MutableAlloc!(RCIAllocator)(theAllocator);
-    //auto a = immutable MutableAlloc!(RCISharedAllocator)(processAllocator);
+    auto a = immutable MutableAlloc!(RCISharedAllocator)(processAllocator);
 }
 
