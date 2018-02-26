@@ -1,4 +1,3 @@
-///
 module stdx.collections.dlist;
 
 import stdx.collections.common;
@@ -9,19 +8,23 @@ version(unittest)
 {
     import std.experimental.allocator.mallocator;
     import std.experimental.allocator.building_blocks.stats_collector;
-    import std.experimental.allocator : IAllocator, allocatorObject;
+    import std.experimental.allocator : RCIAllocator, RCISharedAllocator,
+           allocatorObject, sharedAllocatorObject;
 
     private alias SCAlloc = StatsCollector!(Mallocator, Options.bytesUsed);
 }
 
 struct DList(T)
 {
-    import std.experimental.allocator : IAllocator, theAllocator, make, dispose;
+    import std.experimental.allocator : RCIAllocator, RCISharedAllocator,
+           theAllocator, processAllocator, make, dispose, stateSize;
     import std.experimental.allocator.building_blocks.affix_allocator;
     import std.traits : isImplicitlyConvertible;
     import std.range.primitives : isInputRange, ElementType;
+    import std.variant : Algebraic;
     import std.conv : emplace;
     import core.atomic : atomicOp;
+    import std.algorithm.mutation : move;
 
 private:
     struct Node
@@ -46,97 +49,71 @@ private:
         }
     }
 
+    // State {
     Node *_head;
-
-    alias MutableAlloc = AffixAllocator!(IAllocator, size_t);
-    Mutable!MutableAlloc _ouroborosAllocator;
-
-    /// Returns the actual allocator from ouroboros
-    @trusted ref auto allocator(this _)()
-    {
-        assert(!_ouroborosAllocator.isNull);
-        return _ouroborosAllocator.get();
-    }
+    AllocatorHandler _allocator;
+    // }
 
     /// Constructs the ouroboros allocator from allocator if the ouroboros
-    //allocator wasn't previously set
-    public @trusted bool setAllocator(IAllocator allocator)
+    // allocator wasn't previously set
+    /*@nogc*/ nothrow pure @safe
+    bool setAllocator(A)(ref A allocator)
+    if (is(A == RCIAllocator) || is(A == RCISharedAllocator))
     {
-        if (_ouroborosAllocator.isNull)
+        if (_allocator.isNull)
         {
-            _ouroborosAllocator = Mutable!(MutableAlloc)(allocator,
-                    MutableAlloc(allocator));
+            auto a = typeof(_allocator)(allocator);
+            move(a, _allocator);
             return true;
         }
         return false;
     }
 
-    public @trusted IAllocator getAllocator(this _)()
-    {
-        return _ouroborosAllocator.isNull ? null : allocator().parent;
-    }
-
-    @trusted void addRef(QualNode, this Qualified)(QualNode node)
+    @nogc nothrow pure @trusted
+    void addRef(QualNode, this Q)(QualNode node)
     {
         assert(node !is null);
-        debug(CollectionDList)
-        {
-            writefln("DList.addRef: Node %s has refcount: %s; will be: %s",
-                    node._payload, *prefCount(node), *prefCount(node) + 1);
-        }
-        static if (is(Qualified == immutable) || is(Qualified == const))
-        {
-            atomicOp!"+="(*prefCount(node), 1);
-        }
-        else
-        {
-            ++*prefCount(node);
-        }
+        cast(void) _allocator.opPrefix!("+=")(cast(void[Node.sizeof])(*node), 1);
     }
 
-    @trusted void delRef(ref Node *node)
+    void delRef(ref Node *node)
     {
+        // Will be optimized away, but the type system infers T's safety
+        if (0) { T t = T.init; }
+
         assert(node !is null);
-        size_t *pref = prefCount(node);
-        debug(CollectionDList) writefln("DList.delRef: Node %s has refcount: %s; will be: %s",
-                node._payload, *pref, *pref - 1);
-        if (*pref == 0)
-        {
-            debug(CollectionDList) writefln("DList.delRef: Deleting node %s", node._payload);
-            allocator.dispose(node);
-            node = null;
-        }
-        else
-        {
-            --*pref;
-        }
+        () @trusted {
+            if (opCmpPrefix!"=="(node, 0))
+            {
+                dispose(_allocator, node);
+                node = null;
+            }
+            else
+            {
+                cast(void) _allocator.opPrefix!("-=")(cast(void[Node.sizeof])(*node), 1);
+            }
+        }();
     }
 
-    @trusted auto prefCount(QualNode, this Qualified)(QualNode node)
+    pragma(inline, true)
+    @nogc nothrow pure @trusted
+    size_t opCmpPrefix(string op)(const Node *node, size_t val) const
+    if ((op == "==") || (op == "<=") || (op == "<") || (op == ">=") || (op == ">"))
     {
-        assert(node !is null);
-        static if (is(Qualified == immutable) || is(Qualified == const))
-        {
-            return cast(shared size_t*)(&allocator.prefix(cast(void[Node.sizeof])(*node)));
-        }
-        else
-        {
-            return cast(size_t*)(&allocator.prefix(cast(void[Node.sizeof])(*node)));
-        }
+        return _allocator.opCmpPrefix!op(cast(void[Node.sizeof])(*node), val);
     }
 
     static string immutableInsert(string stuff)
     {
         return ""
-            ~"auto tmpAlloc = Mutable!(MutableAlloc)(allocator, MutableAlloc(allocator));"
-            ~"_ouroborosAllocator = (() @trusted => cast(immutable)(tmpAlloc))();"
+            ~"_allocator = immutable AllocatorHandler(allocator);"
             ~"Node *tmpNode;"
             ~"Node *tmpHead;"
             ~"foreach (item; " ~ stuff ~ ")"
             ~"{"
                 ~"Node *newNode;"
                 ~"() @trusted { newNode ="
-                    ~"tmpAlloc.get().make!(Node)(item, null, null);"
+                    ~"_allocator.make!(Node)(item, null, null);"
                 ~"}();"
                 ~"if (tmpHead is null)"
                 ~"{"
@@ -154,31 +131,120 @@ private:
     }
 
 public:
-    this(this _)(IAllocator allocator)
+    /**
+     * Constructs a qualified doubly linked list that will use the provided
+     * allocator object. For `immutable` objects, a `RCISharedAllocator` must
+     * be supplied.
+     *
+     * Params:
+     *      allocator = a $(REF RCIAllocator, std,experimental,allocator) or
+     *                  $(REF RCISharedAllocator, std,experimental,allocator)
+     *                  allocator object
+     *
+     * Complexity: $(BIGOH 1)
+     */
+    this(A, this Q)(A allocator)
+    if (!is(Q == shared)
+        && (is(A == RCISharedAllocator) || !is(Q == immutable))
+        && (is(A == RCIAllocator) || is(A == RCISharedAllocator)))
     {
         debug(CollectionDList)
         {
             writefln("DList.ctor: begin");
             scope(exit) writefln("DList.ctor: end");
         }
-        setAllocator(allocator);
+        static if (is(Q == immutable) || is(Q == const))
+        {
+            T[] empty;
+            this(allocator, empty);
+        }
+        else
+        {
+            setAllocator(allocator);
+        }
     }
 
-    this(U, this Qualified)(U[] values...)
+    ///
+    @safe unittest
+    {
+        auto dl = DList!int(theAllocator);
+        auto cdl = const DList!int(processAllocator);
+        auto idl = immutable DList!int(processAllocator);
+    }
+
+    /**
+     * Constructs a qualified doubly linked list out of a number of items.
+     * Because no allocator was provided, the list will use the
+     * $(REF, GCAllocator, std,experimental,allocator).
+     *
+     * Params:
+     *      values = a variable number of items, either in the form of a
+     *               list or as a built-in array
+     *
+     * Complexity: $(BIGOH m), where `m` is the number of items.
+     */
+    this(U, this Q)(U[] values...)
     if (isImplicitlyConvertible!(U, T))
     {
-        this(theAllocator, values);
+        static if (is(Q == immutable) || is(Q == const))
+        {
+            this(processAllocatorObject(), values);
+        }
+        else
+        {
+            this(threadAllocatorObject(), values);
+        }
     }
 
-    this(U, this Qualified)(IAllocator allocator, U[] values...)
-    if (isImplicitlyConvertible!(U, T))
+    ///
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+
+        // Create a list from a list of ints
+        {
+            auto dl = DList!int(1, 2, 3);
+            assert(equal(dl, [1, 2, 3]));
+        }
+        // Create a list from an array of ints
+        {
+            auto dl = DList!int([1, 2, 3]);
+            assert(equal(dl, [1, 2, 3]));
+        }
+        // Create a list from a list from an input range
+        {
+            auto dl = DList!int(1, 2, 3);
+            auto dl2 = DList!int(dl);
+            assert(equal(dl2, [1, 2, 3]));
+        }
+    }
+
+    /**
+     * Constructs a qualified doubly linked list out of a number of items
+     * that will use the provided allocator object.
+     * For `immutable` objects, a `RCISharedAllocator` must be supplied.
+     *
+     * Params:
+     *      allocator = a $(REF RCIAllocator, std,experimental,allocator) or
+     *                  $(REF RCISharedAllocator, std,experimental,allocator)
+     *                  allocator object
+     *      values = a variable number of items, either in the form of a
+     *               list or as a built-in array
+     *
+     * Complexity: $(BIGOH m), where `m` is the number of items.
+     */
+    this(A, U, this Q)(A allocator, U[] values...)
+    if (!is(Q == shared)
+        && (is(A == RCISharedAllocator) || !is(Q == immutable))
+        && (is(A == RCIAllocator) || is(A == RCISharedAllocator))
+        && isImplicitlyConvertible!(U, T))
     {
         debug(CollectionDList)
         {
             writefln("DList.ctor: begin");
             scope(exit) writefln("DList.ctor: end");
         }
-        static if (is(Qualified == immutable) || is(Qualified == const))
+        static if (is(Q == immutable) || is(Q == const))
         {
             mixin(immutableInsert("values"));
         }
@@ -189,16 +255,53 @@ public:
         }
     }
 
-    this(Stuff, this Qualified)(Stuff stuff)
+    /**
+     * Constructs a qualified doubly linked list out of an
+     * $(REF_ALTTEXT input range, isInputRange, std,range,primitives).
+     * Because no allocator was provided, the list will use the
+     * $(REF, GCAllocator, std,experimental,allocator).
+     *
+     * Params:
+     *      stuff = an input range of elements that are implitictly convertible
+     *              to `T`
+     *
+     * Complexity: $(BIGOH m), where `m` is the number of elements in the range.
+     */
+    this(Stuff, this Q)(Stuff stuff)
     if (isInputRange!Stuff
         && isImplicitlyConvertible!(ElementType!Stuff, T)
         && !is(Stuff == T[]))
     {
-        this(theAllocator, stuff);
+        static if (is(Q == immutable) || is(Q == const))
+        {
+            this(processAllocatorObject(), stuff);
+        }
+        else
+        {
+            this(threadAllocatorObject(), stuff);
+        }
     }
 
-    this(Stuff, this Qualified)(IAllocator allocator, Stuff stuff)
-    if (isInputRange!Stuff
+    /**
+     * Constructs a qualified doubly linked list out of an
+     * $(REF_ALTTEXT input range, isInputRange, std,range,primitives)
+     * that will use the provided allocator object.
+     * For `immutable` objects, a `RCISharedAllocator` must be supplied.
+     *
+     * Params:
+     *      allocator = a $(REF RCIAllocator, std,experimental,allocator) or
+     *                  $(REF RCISharedAllocator, std,experimental,allocator)
+     *                  allocator object
+     *      stuff = an input range of elements that are implitictly convertible
+     *              to `T`
+     *
+     * Complexity: $(BIGOH m), where `m` is the number of elements in the range.
+     */
+    this(A, Stuff, this Q)(A allocator, Stuff stuff)
+    if (!is(Q == shared)
+        && (is(A == RCISharedAllocator) || !is(Q == immutable))
+        && (is(A == RCIAllocator) || is(A == RCISharedAllocator))
+        && isInputRange!Stuff
         && isImplicitlyConvertible!(ElementType!Stuff, T)
         && !is(Stuff == T[]))
     {
@@ -207,7 +310,7 @@ public:
             writefln("DList.ctor: begin");
             scope(exit) writefln("DList.ctor: end");
         }
-        static if (is(Qualified == immutable) || is(Qualified == const))
+        static if (is(Q == immutable) || is(Q == const))
         {
             mixin(immutableInsert("stuff"));
         }
@@ -225,6 +328,7 @@ public:
             writefln("DList.postblit: begin");
             scope(exit) writefln("DList.postblit: end");
         }
+        _allocator.bootstrap();
         if (_head !is null)
         {
             addRef(_head);
@@ -234,13 +338,16 @@ public:
     }
 
     // Immutable ctors
-    private this(NodeQual, OuroQual, this Qualified)(NodeQual _newHead,
-            OuroQual ouroborosAllocator)
+    // Very important to pass the allocator by ref! (Related to postblit bug)
+    private this(NodeQual, AllocQual, this Q)(NodeQual _newHead, ref AllocQual _newAllocator)
         if (is(typeof(_head) : typeof(_newHead))
-            && (is(Qualified == immutable) || is(Qualified == const)))
+            && (is(Q == immutable) || is(Q == const)))
     {
         _head = _newHead;
-        _ouroborosAllocator = ouroborosAllocator;
+        // Needs a bootstrap
+        // bootstrap is the equivalent of incRef
+        _newAllocator.bootstrap();
+        _allocator = _newAllocator;
         if (_head !is null)
         {
             addRef(_head);
@@ -271,13 +378,48 @@ public:
         }
     }
 
-    void destroyUnused(Node *startNode)
+    nothrow pure @safe unittest
+    {
+        auto s = DList!int(1, 2, 3);
+
+        // Infer safety
+        static assert(!__traits(compiles, () @safe { DList!Unsafe(Unsafe(1)); }));
+        static assert(!__traits(compiles, () @safe { auto s = const DList!Unsafe(Unsafe(1)); }));
+        static assert(!__traits(compiles, () @safe { auto s = immutable DList!Unsafe(Unsafe(1)); }));
+
+        static assert(!__traits(compiles, () @safe { DList!UnsafeDtor(UnsafeDtor(1)); }));
+        static assert(!__traits(compiles, () @safe { auto s = const DList!UnsafeDtor(UnsafeDtor(1)); }));
+        static assert(!__traits(compiles, () @safe { auto s = immutable DList!UnsafeDtor(UnsafeDtor(1)); }));
+
+        // Infer purity
+        static assert(!__traits(compiles, () pure { DList!Impure(Impure(1)); }));
+        static assert(!__traits(compiles, () pure { auto s = const DList!Impure(Impure(1)); }));
+        static assert(!__traits(compiles, () pure { auto s = immutable DList!Impure(Impure(1)); }));
+
+        static assert(!__traits(compiles, () pure { DList!ImpureDtor(ImpureDtor(1)); }));
+        static assert(!__traits(compiles, () pure { auto s = const DList!ImpureDtor(ImpureDtor(1)); }));
+        static assert(!__traits(compiles, () pure { auto s = immutable DList!ImpureDtor(ImpureDtor(1)); }));
+
+        // Infer throwability
+        static assert(!__traits(compiles, () nothrow { DList!Throws(Throws(1)); }));
+        static assert(!__traits(compiles, () nothrow { auto s = const DList!Throws(Throws(1)); }));
+        static assert(!__traits(compiles, () nothrow { auto s = immutable DList!Throws(Throws(1)); }));
+
+        static assert(!__traits(compiles, () nothrow { DList!ThrowsDtor(ThrowsDtor(1)); }));
+        static assert(!__traits(compiles, () nothrow { auto s = const DList!ThrowsDtor(ThrowsDtor(1)); }));
+        static assert(!__traits(compiles, () nothrow { auto s = immutable DList!ThrowsDtor(ThrowsDtor(1)); }));
+    }
+
+    private void destroyUnused(Node *startNode)
     {
         debug(CollectionDList)
         {
             writefln("DList.destoryUnused: begin");
             scope(exit) writefln("DList.destoryUnused: end");
         }
+
+        // Will be optimized away, but the type system infers T's safety
+        if (0) { T t = T.init; }
 
         if (startNode is null) return;
 
@@ -286,9 +428,9 @@ public:
         while (tmpNode !is null)
         {
             if (((tmpNode._next is null || tmpNode._prev is null)
-                  && *prefCount(tmpNode) == 0)
+                  && opCmpPrefix!"=="(tmpNode, 0))
                 || (tmpNode._next !is null && tmpNode._prev !is null
-                    && *prefCount(tmpNode) == 1))
+                    && opCmpPrefix!"=="(tmpNode, 1)))
             {
                 // The last node should always have rc == 0 (only one ref,
                 // from prev._next)
@@ -309,9 +451,9 @@ public:
         while (isCycle && tmpNode !is null)
         {
             if (((tmpNode._next is null || tmpNode._prev is null)
-                  && *prefCount(tmpNode) == 0)
+                  && opCmpPrefix!"=="(tmpNode, 0))
                 || (tmpNode._next !is null && tmpNode._prev !is null
-                    && *prefCount(tmpNode) == 1))
+                    && opCmpPrefix!"=="(tmpNode, 1)))
             {
                 tmpNode = tmpNode._prev;
             }
@@ -325,24 +467,35 @@ public:
         if (isCycle)
         {
             // We can safely deallocate memory
+            // We could be in the middle of the list so we need to go both
+            // forwards and backwards
             tmpNode = startNode._next;
             while (tmpNode !is null)
             {
                 Node *oldNode = tmpNode;
                 tmpNode = tmpNode._next;
-                () @trusted { allocator.dispose(oldNode); }();
+                () @trusted { dispose(_allocator, oldNode); }();
             }
             tmpNode = startNode;
             while (tmpNode !is null)
             {
                 Node *oldNode = tmpNode;
                 tmpNode = tmpNode._prev;
-                () @trusted { allocator.dispose(oldNode); }();
+                () @trusted { dispose(_allocator, oldNode); }();
             }
         }
     }
 
-    bool isUnique(this _)()
+    /**
+     * Check whether there are no more references to this list instance.
+     *
+     * Returns:
+     *      `true` if this is the only reference to this list instance;
+     *      `false` otherwise.
+     *
+     * Complexity: $(BIGOH n).
+     */
+    bool isUnique() const
     {
         debug(CollectionDList)
         {
@@ -364,7 +517,7 @@ public:
         }
 
         // For a single node list, head should have rc == 0
-        if (tmpNode._next is null && (*prefCount(tmpNode) > 0))
+        if (tmpNode._next is null && opCmpPrefix!">"(tmpNode, 0))
         {
             return false;
         }
@@ -375,14 +528,14 @@ public:
             {
                 // The first and last node should have rc == 0 unless the _head
                 // is pointing to them, in which case rc must be 1
-                if (((tmpNode is _head) && (*prefCount(tmpNode) > 1))
-                    || ((tmpNode !is _head) && (*prefCount(tmpNode) > 0)))
+                if (((tmpNode is _head) && opCmpPrefix!">"(tmpNode, 1))
+                    || ((tmpNode !is _head) && opCmpPrefix!">"(tmpNode, 0)))
                 {
                     return false;
                 }
             }
-            else if (((tmpNode is _head) && (*prefCount(tmpNode) > 2))
-                    || ((tmpNode !is _head) && (*prefCount(tmpNode) > 1)))
+            else if (((tmpNode is _head) && opCmpPrefix!">"(tmpNode, 2))
+                     || ((tmpNode !is _head) && opCmpPrefix!">"(tmpNode, 1)))
             {
                 // Any other node should have rc == 1 unless the _head
                 // is pointing to it, in which case rc must be 2
@@ -390,21 +543,82 @@ public:
             }
             tmpNode = tmpNode._next;
         }
-
         return true;
     }
 
-    bool empty(this _)()
+    ///
+    @safe unittest
+    {
+        auto dl = DList!int(24, 42);
+        assert(dl.isUnique);
+        {
+            auto dl2 = dl;
+            assert(!dl.isUnique);
+            dl2.front = 0;
+            assert(dl.front == 0);
+        } // dl2 goes out of scope
+        assert(dl.isUnique);
+    }
+
+    /**
+     * Check if the list is empty.
+     *
+     * Returns:
+     *      `true` if there are no nodes in the list; `false` otherwise.
+     *
+     * Complexity: $(BIGOH 1).
+     */
+    @nogc nothrow pure @safe
+    bool empty() const
     {
         return _head is null;
     }
 
+    ///
+    @safe unittest
+    {
+        DList!int dl;
+        assert(dl.empty);
+        size_t pos = 0;
+        dl.insert(pos, 1);
+        assert(!dl.empty);
+    }
+
+    /**
+     * Provide access to the first element in the list. The user must check
+     * that the list isn't `empty`, prior to calling this function.
+     *
+     * Returns:
+     *      a reference to the first element.
+     *
+     * Complexity: $(BIGOH 1).
+     */
     ref auto front(this _)()
     {
         assert(!empty, "DList.front: List is empty");
         return _head._payload;
     }
 
+    ///
+    @safe unittest
+    {
+        auto dl = DList!int(1, 2, 3);
+        assert(dl.front == 1);
+        dl.front = 0;
+        assert(dl.front == 0);
+    }
+
+    /**
+     * Advance to the next element in the list. The user must check
+     * that the list isn't `empty`, prior to calling this function.
+     *
+     * If this was the last element in the list and there are no more
+     * references to the current list, then the list and all it's elements
+     * will be destroyed; this will call `T`'s dtor, if one is defined,
+     * and will collect the resources.
+     *
+     * Complexity: usually $(BIGOH 1), worst case $(BIGOH n).
+     */
     void popFront()
     {
         debug(CollectionDList)
@@ -433,6 +647,31 @@ public:
         }
     }
 
+    ///
+    @safe unittest
+    {
+        auto a = [1, 2, 3];
+        auto dl = DList!int(a);
+        size_t i = 0;
+        while (!dl.empty)
+        {
+            assert(dl.front == a[i++]);
+            dl.popFront;
+        }
+        assert(dl.empty);
+    }
+
+    /**
+     * Go to the previous element in the list. The user must check
+     * that the list isn't `empty`, prior to calling this function.
+     *
+     * If this was the first element in the list and there are no more
+     * references to the current list, then the list and all it's elements
+     * will be destroyed; this will call `T`'s dtor, if one is defined,
+     * and will collect the resources.
+     *
+     * Complexity: usually $(BIGOH 1), worst case $(BIGOH n).
+     */
     void popPrev()
     {
         debug(CollectionDList)
@@ -460,6 +699,30 @@ public:
         }
     }
 
+    ///
+    @safe unittest
+    {
+        auto dl = DList!int([1, 2, 3]);
+        dl.popFront;
+        assert(dl.front == 2);
+        dl.popPrev;
+        assert(dl.front == 1);
+        dl.popPrev;
+        assert(dl.empty);
+    }
+
+    /**
+     * Advance to the next element in the list. The user must check
+     * that the list isn't `empty`, prior to calling this function.
+     *
+     * This must be used in order to iterate through a `const` or `immutable`
+     * list. For a mutable list this is equivalent to calling `popFront`.
+     *
+     * Returns:
+     *      a list that starts with the next element in the original list
+     *
+     * Complexity: $(BIGOH 1).
+     */
     Qualified tail(this Qualified)()
     {
         debug(CollectionDList)
@@ -471,7 +734,7 @@ public:
 
         static if (is(Qualified == immutable) || is(Qualified == const))
         {
-            return typeof(this)(_head._next, _ouroborosAllocator);
+            return typeof(this)(_head._next, _allocator);
         }
         else
         {
@@ -479,6 +742,82 @@ public:
         }
     }
 
+    ///
+    @safe unittest
+    {
+        auto idl = immutable DList!int([1, 2, 3]);
+        assert(idl.tail.front == 2);
+    }
+
+    /**
+     * Eagerly iterate over each element in the list and call `fun` over each
+     * element. This should be used to iterate through `const` and `immutable`
+     * lists.
+     *
+     * Normally, the entire list is iterated. If partial iteration (early stopping)
+     * is desired, `fun` needs to return a value of type
+     * $(REF Flag, std,typecons)`!"each"` (`Yes.each` to continue iteration, or
+     * `No.each` to stop).
+     *
+     * Params:
+     *      fun = unary function to apply on each element of the list.
+     *
+     * Returns:
+     *      `Yes.each` if it has iterated through all the elements in the list,
+     *      or `No.each` otherwise.
+     *
+     * Complexity: $(BIGOH n).
+     */
+    template each(alias fun)
+    {
+        import std.typecons : Flag, Yes, No;
+        import std.functional : unaryFun;
+        import stdx.collections.slist : SList;
+
+        Flag!"each" each(this Q)()
+        if (is (typeof(unaryFun!fun(T.init))))
+        {
+            alias fn = unaryFun!fun;
+
+            auto sl = SList!(const DList!T)(this);
+            while (!sl.empty && !sl.front.empty)
+            {
+                static if (!is(typeof(fn(T.init)) == Flag!"each"))
+                {
+                    cast(void) fn(sl.front.front);
+                }
+                else
+                {
+                    if (fn(sl.front.front) == No.each)
+                        return No.each;
+                }
+                sl ~= sl.front.tail;
+                sl.popFront;
+            }
+            return Yes.each;
+        }
+    }
+
+    ///
+    @safe unittest
+    {
+        import std.typecons : Flag, Yes, No;
+
+        auto idl = immutable DList!int([1, 2, 3]);
+
+        static bool foo(int x) { return x > 0; }
+
+        assert(idl.each!foo == Yes.each);
+    }
+
+    /**
+     * Perform a shallow copy of the list.
+     *
+     * Returns:
+     *      a new reference to the current list.
+     *
+     * Complexity: $(BIGOH 1).
+     */
     ref Qualified save(this Qualified)()
     {
         debug(CollectionDList)
@@ -489,6 +828,33 @@ public:
         return this;
     }
 
+    ///
+    @safe unittest
+    {
+        auto a = [1, 2, 3];
+        auto dl = DList!int(a);
+        size_t i = 0;
+
+        auto tmp = dl.save;
+        while (!tmp.empty)
+        {
+            assert(tmp.front == a[i++]);
+            tmp.popFront;
+        }
+        assert(tmp.empty);
+        assert(!dl.empty);
+    }
+
+    /**
+     * Perform a copy of the list. This will create a new list that will copy
+     * the elements of the current list. This will `NOT` call `dup` on the
+     * elements of the list, regardless if `T` defines it or not.
+     *
+     * Returns:
+     *      a new list.
+     *
+     * Complexity: $(BIGOH n).
+     */
     typeof(this) dup()
     {
         debug(CollectionDList)
@@ -496,14 +862,60 @@ public:
             writefln("DList.dup: begin");
             scope(exit) writefln("DList.dup: end");
         }
-        IAllocator alloc = getAllocator();
-        if (alloc is null)
+
+        DList!T result;
+        result._allocator = _allocator;
+
+        // TODO: this should rewind the list
+        static if (is(Q == immutable) || is(Q == const))
         {
-            alloc = theAllocator;
+            auto tmp = this;
+            while(!tmp.empty)
+            {
+                result ~= tmp.front;
+                tmp = tmp.tail;
+            }
         }
-        return typeof(this)(alloc, this);
+        else
+        {
+            result.insert(0, this);
+        }
+        return result;
     }
 
+    ///
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+
+        auto dl = DList!int(1, 2, 3);
+        auto dlDup = dl.dup;
+        assert(equal(dl, dlDup));
+        dlDup.front = 0;
+        assert(!equal(dl, dlDup));
+        assert(dlDup.front == 0);
+        assert(dl.front == 1);
+    }
+
+    /**
+     * Inserts the elements of an
+     * $(REF_ALTTEXT input range, isInputRange, std,range,primitives), or a
+     * variable number of items, at the given `pos`.
+     *
+     * If no allocator was provided when the list was created, the
+     * $(REF, GCAllocator, std,experimental,allocator) will be used.
+     *
+     * Params:
+     *      pos = a positive integral
+     *      stuff = an input range of elements that are implitictly convertible
+     *              to `T`; a variable number of items either in the form of a
+     *              list or as a built-in array
+     *
+     * Returns:
+     *      the number of elements inserted
+     *
+     * Complexity: $(BIGOH pos + m), where `m` is the number of elements in the range.
+     */
     size_t insert(Stuff)(size_t pos, Stuff stuff)
     if (isInputRange!Stuff && isImplicitlyConvertible!(ElementType!Stuff, T))
     {
@@ -512,7 +924,13 @@ public:
             writefln("DList.insert: begin");
             scope(exit) writefln("DList.insert: end");
         }
-        setAllocator(theAllocator);
+
+        // Will be optimized away, but the type system infers T's safety
+        if (0) { T t = T.init; }
+
+        // Ensure we have an allocator. If it was already set, this will do nothing
+        auto a = threadAllocatorObject();
+        setAllocator(a);
 
         size_t result;
         Node *tmpNode;
@@ -520,7 +938,7 @@ public:
         foreach (item; stuff)
         {
             Node *newNode;
-            () @trusted { newNode = allocator.make!(Node)(item, null, null); }();
+            () @trusted { newNode = _allocator.make!(Node)(item, null, null); }();
             if (tmpHead is null)
             {
                 tmpHead = tmpNode = newNode;
@@ -604,12 +1022,52 @@ public:
         return result;
     }
 
+    /// ditto
     size_t insert(Stuff)(size_t pos, Stuff[] stuff...)
     if (isImplicitlyConvertible!(Stuff, T))
     {
         return insert(pos, stuff);
     }
 
+    ///
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+
+        auto d = DList!int(4, 5);
+        DList!int dl;
+        assert(dl.empty);
+
+        size_t pos = 0;
+        pos += dl.insert(pos, 1);
+        pos += dl.insert(pos, [2, 3]);
+        assert(equal(dl, [1, 2, 3]));
+
+        // insert from an input range
+        pos += dl.insert(pos, d);
+        assert(equal(dl, [1, 2, 3, 4, 5]));
+        d.front = 0;
+        assert(equal(dl, [1, 2, 3, 4, 5]));
+    }
+
+    /**
+     * Inserts the elements of an
+     * $(REF_ALTTEXT input range, isInputRange, std,range,primitives), or a
+     * variable number of items, at the end of the list.
+     *
+     * If no allocator was provided when the list was created, the
+     * $(REF, GCAllocator, std,experimental,allocator) will be used.
+     *
+     * Params:
+     *      stuff = an input range of elements that are implitictly convertible
+     *              to `T`; a variable number of items either in the form of a
+     *              list or as a built-in array
+     *
+     * Returns:
+     *      the number of elements inserted
+     *
+     * Complexity: $(BIGOH pos + m), where `m` is the number of elements in the range.
+     */
     size_t insertBack(Stuff)(Stuff stuff)
     if (isInputRange!Stuff && isImplicitlyConvertible!(ElementType!Stuff, T))
     {
@@ -618,7 +1076,13 @@ public:
             writefln("DList.insertBack: begin");
             scope(exit) writefln("DList.insertBack: end");
         }
-        setAllocator(theAllocator);
+
+        // Will be optimized away, but the type system infers T's safety
+        if (0) { T t = T.init; }
+
+        // Ensure we have an allocator. If it was already set, this will do nothing
+        auto a = threadAllocatorObject();
+        setAllocator(a);
 
         size_t result;
         Node *tmpNode;
@@ -626,7 +1090,7 @@ public:
         foreach (item; stuff)
         {
             Node *newNode;
-            () @trusted { newNode = allocator.make!(Node)(item, null, null); }();
+            () @trusted { newNode = _allocator.make!(Node)(item, null, null); }();
             if (tmpHead is null)
             {
                 tmpHead = tmpNode = newNode;
@@ -664,14 +1128,49 @@ public:
         return result;
     }
 
+    /// ditto
     size_t insertBack(Stuff)(Stuff[] stuff...)
     if (isImplicitlyConvertible!(Stuff, T))
     {
         return insertBack(stuff);
     }
 
+    ///
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+
+        auto d = DList!int(4, 5);
+        DList!int dl;
+        assert(dl.empty);
+
+        dl.insertBack(1);
+        dl.insertBack([2, 3]);
+        assert(equal(dl, [1, 2, 3]));
+
+        // insert from an input range
+        dl.insertBack(d);
+        assert(equal(dl, [1, 2, 3, 4, 5]));
+        d.front = 0;
+        assert(equal(dl, [1, 2, 3, 4, 5]));
+    }
+
+    /**
+     * Create a new list that results from the concatenation of this list
+     * with `rhs`.
+     *
+     * Params:
+     *      rhs = can be an element that is implicitly convertible to `T`, an
+     *            input range of such elements, or another doubly linked list
+     *
+     * Returns:
+     *      the newly created list
+     *
+     * Complexity: $(BIGOH n + m), where `m` is the number of elements in `rhs`.
+     */
     auto ref opBinary(string op, U)(auto ref U rhs)
         if (op == "~" &&
+            //(is (U : const typeof(this))
             (is (U == typeof(this))
              || is (U : T)
              || (isInputRange!U && isImplicitlyConvertible!(ElementType!U, T))
@@ -683,28 +1182,41 @@ public:
             scope(exit) writefln("DList.opBinary!~: end");
         }
 
-        IAllocator alloc = getAllocator();
-        if (alloc is null)
-        {
-            static if (is(U == typeof(this)))
-            {
-                alloc = rhs.getAllocator();
-            }
-            else
-            {
-                alloc = null;
-            }
-            if (alloc is null)
-            {
-                alloc = theAllocator;
-            }
-        }
-
-        typeof(this) newList = typeof(this)(alloc, rhs);
-        newList.insert(0, this);
+        auto newList = this.dup();
+        newList.insertBack(rhs);
         return newList;
     }
 
+    ///
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+
+        auto dl = DList!int(1);
+        auto dl2 = dl ~ 2;
+
+        assert(equal(dl2, [1, 2]));
+        dl.front = 0;
+        assert(equal(dl2, [1, 2]));
+    }
+
+    /**
+     * Assign `rhs` to this list. The current list will now become another
+     * reference to `rhs`, unless `rhs` is `null`, in which case the current
+     * list will become empty. If `rhs` refers to the current list nothing will
+     * happen.
+     *
+     * All the previous list elements that have no more references to them
+     * will be destroyed; this leads to a $(BIGOH n) complexity.
+     *
+     * Params:
+     *      rhs = a reference to a doubly linked list
+     *
+     * Returns:
+     *      a reference to this list
+     *
+     * Complexity: $(BIGOH n).
+     */
     auto ref opAssign()(auto ref typeof(this) rhs)
     {
         debug(CollectionDList)
@@ -722,7 +1234,7 @@ public:
         {
             rhs.addRef(rhs._head);
             debug(CollectionDList) writefln("DList.opAssign: Node %s has refcount: %s",
-                    rhs._head._payload, *prefCount(rhs._head));
+                    rhs._head._payload, *localPrefCount(rhs._head));
         }
 
         if (_head !is null)
@@ -738,11 +1250,39 @@ public:
             }
         }
         _head = rhs._head;
-        _ouroborosAllocator = rhs._ouroborosAllocator;
-
+        _allocator = rhs._allocator;
         return this;
     }
 
+    ///
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+
+        auto dl = DList!int(1);
+        auto dl2 = DList!int(1, 2);
+
+        dl = dl2; // this will free the old dl
+        assert(equal(dl, [1, 2]));
+        dl.front = 0;
+        assert(equal(dl2, [0, 2]));
+    }
+
+    /**
+     * Append the elements of `rhs` at the end of the list.
+     *
+     * If no allocator was provided when the list was created, the
+     * $(REF, GCAllocator, std,experimental,allocator) will be used.
+     *
+     * Params:
+     *      rhs = can be an element that is implicitly convertible to `T`, an
+     *            input range of such elements, or another doubly linked list
+     *
+     * Returns:
+     *      a reference to this list
+     *
+     * Complexity: $(BIGOH n + m), where `m` is the number of elements in `rhs`.
+     */
     auto ref opOpAssign(string op, U)(auto ref U rhs)
         if (op == "~" &&
             (is (U == typeof(this))
@@ -760,6 +1300,30 @@ public:
         return this;
     }
 
+    ///
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+
+        auto d = DList!int(4, 5);
+        DList!int dl;
+        assert(dl.empty);
+
+        dl ~= 1;
+        dl ~= [2, 3];
+        assert(equal(dl, [1, 2, 3]));
+
+        // append an input range
+        dl ~= d;
+        assert(equal(dl, [1, 2, 3, 4, 5]));
+        d.front = 0;
+        assert(equal(dl, [1, 2, 3, 4, 5]));
+    }
+
+    /**
+     * Remove the current element from the list. If there are no
+     * more references to the current element, then it will be destroyed.
+     */
     void remove()
     {
         debug(CollectionDList)
@@ -805,7 +1369,24 @@ public:
         }
     }
 
-    //debug(CollectionDList) void printRefCount(Node *sn = null)
+    ///
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+
+        auto dl = DList!int(1, 2, 3);
+        auto dl2 = dl;
+
+        assert(equal(dl, [1, 2, 3]));
+        dl.popFront;
+        dl.remove();
+        assert(equal(dl, [3]));
+        assert(equal(dl2, [1, 3]));
+        dl.popPrev;
+        assert(equal(dl, [1, 3]));
+    }
+
+    debug(CollectionDList)
     void printRefCount(Node *sn = null)
     {
         import std.stdio;
@@ -826,13 +1407,14 @@ public:
         while (tmpNode !is null)
         {
             writefln("DList.printRefCount: Node %s has ref count %s",
-                    tmpNode._payload, *prefCount(tmpNode));
+                    tmpNode._payload, *localPrefCount(tmpNode));
             tmpNode = tmpNode._next;
         }
     }
 }
 
-version (unittest) private @trusted void testInit(IAllocator allocator)
+version (unittest) private nothrow pure @safe
+void testInit(RCIAllocator allocator)
 {
     import std.algorithm.comparison : equal;
 
@@ -855,21 +1437,23 @@ version (unittest) private @trusted void testInit(IAllocator allocator)
     assert(equal(dl5, [1, 2]));
 }
 
-@trusted unittest
+@safe unittest
 {
     import std.conv;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
-
-    () @safe {
-        testInit(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "DList ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
-    }();
+    {
+        auto _allocator = (() @trusted => allocatorObject(&statsCollectorAlloc))();
+        () nothrow pure @safe {
+            testInit(_allocator);
+        }();
+    }
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "DList ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
-version (unittest) private @trusted void testInsert(IAllocator allocator)
+version (unittest) private nothrow pure @safe
+void testInsert(RCIAllocator allocator)
 {
     import std.algorithm.comparison : equal;
     import std.range.primitives : walkLength;
@@ -929,21 +1513,23 @@ version (unittest) private @trusted void testInsert(IAllocator allocator)
     assert(equal(dl7, [2, 1, 4, 3]));
 }
 
-@trusted unittest
+@safe unittest
 {
     import std.conv;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
-
-    () @safe {
-        testInsert(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "DList ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
-    }();
+    {
+        auto _allocator = (() @trusted => allocatorObject(&statsCollectorAlloc))();
+        () nothrow pure @safe {
+            testInsert(_allocator);
+        }();
+    }
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "DList ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
-version (unittest) private @trusted void testRemove(IAllocator allocator)
+version (unittest) private nothrow pure @safe
+void testRemove(RCIAllocator allocator)
 {
     import std.algorithm.comparison : equal;
 
@@ -952,7 +1538,7 @@ version (unittest) private @trusted void testRemove(IAllocator allocator)
     dl.remove();
     assert(dl.empty);
     assert(dl.isUnique);
-    assert(!dl._ouroborosAllocator.isNull);
+    assert(!dl._allocator.isNull);
 
     dl.insert(pos, 2);
     auto dl2 = dl;
@@ -961,7 +1547,7 @@ version (unittest) private @trusted void testRemove(IAllocator allocator)
 
     dl.popFront();
     assert(dl.empty);
-    assert(!dl._ouroborosAllocator.isNull);
+    assert(!dl._allocator.isNull);
 
     dl2.popPrev();
     assert(dl2.empty);
@@ -975,21 +1561,23 @@ version (unittest) private @trusted void testRemove(IAllocator allocator)
     assert(dl3.isUnique);
 }
 
-@trusted unittest
+@safe unittest
 {
     import std.conv;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
-
-    () @safe {
-        testRemove(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "DList ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
-    }();
+    {
+        auto _allocator = (() @trusted => allocatorObject(&statsCollectorAlloc))();
+        () nothrow pure @safe {
+            testRemove(_allocator);
+        }();
+    }
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "DList ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
-version (unittest) private @trusted void testCopyAndRef(IAllocator allocator)
+version (unittest) private nothrow pure @safe
+void testCopyAndRef(RCIAllocator allocator)
 {
     import std.algorithm.comparison : equal;
 
@@ -1022,40 +1610,42 @@ version (unittest) private @trusted void testCopyAndRef(IAllocator allocator)
     assert(dlFromDup.front == 2);
 }
 
-@trusted unittest
+@safe unittest
 {
     import std.conv;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
-
-    () @safe {
-        testCopyAndRef(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "DList ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
-    }();
+    {
+        auto _allocator = (() @trusted => allocatorObject(&statsCollectorAlloc))();
+        () nothrow pure @safe {
+            testCopyAndRef(_allocator);
+        }();
+    }
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "DList ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
-@trusted unittest
+@safe unittest
 {
     import std.algorithm.comparison : equal;
 
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
+    auto _allocator = (() @trusted => allocatorObject(&statsCollectorAlloc))();
 
     DList!int dl = DList!int(_allocator, 1, 2, 3);
-    auto before = _allocator.impl.bytesUsed;
+    auto before = statsCollectorAlloc.bytesUsed;
     {
         DList!int dl2 = dl;
         dl2.popFront();
         assert(equal(dl2, [2, 3]));
     }
-    assert(before == _allocator.impl.bytesUsed);
+    assert(before == statsCollectorAlloc.bytesUsed);
     assert(equal(dl, [1, 2, 3]));
     dl.tail();
 }
 
-version(unittest) private @trusted void testImmutability(IAllocator allocator)
+version(unittest) private nothrow pure @safe
+void testImmutability(RCISharedAllocator allocator)
 {
     auto s = immutable DList!(int)(allocator, 1, 2, 3);
     auto s2 = s;
@@ -1070,7 +1660,8 @@ version(unittest) private @trusted void testImmutability(IAllocator allocator)
     static assert(!__traits(compiles, s4 = s4.tail));
 }
 
-version(unittest) private @trusted void testConstness(IAllocator allocator)
+version(unittest) private nothrow pure @safe
+void testConstness(RCISharedAllocator allocator)
 {
     auto s = const DList!(int)(allocator, 1, 2, 3);
     auto s2 = s;
@@ -1085,22 +1676,26 @@ version(unittest) private @trusted void testConstness(IAllocator allocator)
     static assert(!__traits(compiles, s4 = s4.tail));
 }
 
-@trusted unittest
+@safe unittest
 {
     import std.conv;
+    import std.experimental.allocator : processAllocator;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
-
-    () @safe {
-        testConstness(_allocator);
-        testImmutability(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "DList ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
-    }();
+    {
+        // TODO: StatsCollector need to be made shareable
+        //auto _allocator = sharedAllocatorObject(&statsCollectorAlloc);
+        () nothrow pure @safe {
+            testConstness(processAllocatorObject());
+            testImmutability(processAllocatorObject());
+        }();
+    }
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "DList ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
-version(unittest) private @trusted void testConcatAndAppend(IAllocator allocator)
+version(unittest) private nothrow pure @safe
+void testConcatAndAppend(RCIAllocator allocator)
 {
     import std.algorithm.comparison : equal;
 
@@ -1133,21 +1728,23 @@ version(unittest) private @trusted void testConcatAndAppend(IAllocator allocator
     assert(equal(dl5, [1, 2, 3]));
 }
 
-@trusted unittest
+@safe unittest
 {
     import std.conv;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
-
-    () @safe {
-        testConcatAndAppend(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "DList ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
-    }();
+    {
+        auto _allocator = (() @trusted => allocatorObject(&statsCollectorAlloc))();
+        () nothrow pure @safe {
+            testConcatAndAppend(_allocator);
+        }();
+    }
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "DList ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
-version(unittest) private @trusted void testAssign(IAllocator allocator)
+version(unittest) private nothrow pure @safe
+void testAssign(RCIAllocator allocator)
 {
     import std.algorithm.comparison : equal;
 
@@ -1163,21 +1760,23 @@ version(unittest) private @trusted void testAssign(IAllocator allocator)
     assert(dl.empty);
 }
 
-@trusted unittest
+@safe unittest
 {
     import std.conv;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
-
-    () @safe {
-        testAssign(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "DList ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
-    }();
+    {
+        auto _allocator = (() @trusted => allocatorObject(&statsCollectorAlloc))();
+        () nothrow pure @safe {
+            testAssign(_allocator);
+        }();
+    }
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "DList ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
-version(unittest) private @trusted void testWithStruct(IAllocator allocator)
+version(unittest) private nothrow pure @safe
+void testWithStruct(RCIAllocator allocator, RCISharedAllocator sharedAlloc)
 {
     import std.algorithm.comparison : equal;
 
@@ -1190,28 +1789,31 @@ version(unittest) private @trusted void testWithStruct(IAllocator allocator)
         assert(equal(listOfLists.front, [2, 2, 3]));
         static assert(!__traits(compiles, listOfLists.insert(pos, 1)));
 
-        auto immListOfLists = immutable DList!(DList!int)(allocator, list);
+        auto immListOfLists = immutable DList!(DList!int)(sharedAlloc, list);
         assert(immListOfLists.front.front == 2);
         static assert(!__traits(compiles, immListOfLists.front.front = 2));
     }
     assert(equal(list, [2, 2, 3]));
 }
 
-@trusted unittest
+@safe unittest
 {
     import std.conv;
+    import std.experimental.allocator : processAllocator;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
-
-    () @safe {
-        testWithStruct(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "DList ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
-    }();
+    {
+        auto _allocator = (() @trusted => allocatorObject(&statsCollectorAlloc))();
+        () nothrow pure @safe {
+            testWithStruct(_allocator, processAllocatorObject());
+        }();
+    }
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "DList ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
-version(unittest) private @trusted void testWithClass(IAllocator allocator)
+version(unittest) private nothrow pure @safe
+void testWithClass(RCIAllocator allocator)
 {
     class MyClass
     {
@@ -1229,16 +1831,17 @@ version(unittest) private @trusted void testWithClass(IAllocator allocator)
     assert(c.x == 20);
 }
 
-@trusted unittest
+@safe unittest
 {
     import std.conv;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
-
-    () @safe {
-        testWithClass(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "DList ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
-    }();
+    {
+        auto _allocator = (() @trusted => allocatorObject(&statsCollectorAlloc))();
+        () nothrow pure @safe {
+            testWithClass(_allocator);
+        }();
+    }
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "DList ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }

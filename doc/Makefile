@@ -8,7 +8,8 @@ LATEST:=$(shell git describe --abbrev=0 --tags | tr -d v)
 # binaries
 DMD=dmd
 RDMD=rdmd
-DDOC=$(DMD) -w -c -o- -version=StdDdoc -version=Have
+#DDOC=$(DMD) -w -c -o- -version=StdDdoc -version=Have
+DDOC=$(DMD) -w -c -o- -version=Have
 
 # folders
 DOC_OUTPUT_DIR=web
