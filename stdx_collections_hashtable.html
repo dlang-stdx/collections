@@ -1,0 +1,385 @@
+
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+<meta charset="utf-8">
+<meta name="keywords" content="algorithm numeric containers collections">
+<meta name="description" content="Collections library">
+<title>stdx.collections.hashtable - D Programming Language</title>
+
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/custom.css">
+<link rel="stylesheet" href="css/print.css" media="print">
+<link rel="stylesheet" href="css/codemirror.css">
+<link rel="shortcut icon" href="favicon.ico">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.1, maximum-scale=10.0">
+
+</head>
+<body id='stdx.collections.hashtable' class='std'>
+<script type="text/javascript">document.body.className += ' have-javascript';
+var currentVersion = "0.0.0";
+</script>
+<div id="top"><div class="helper"><div class="helper expand-container">    <a href="menu.html" title="Menu" class="hamburger expand-toggle"><span>Menu</span></a>
+    
+<div id="cssmenu"><ul>    <li><a href='dlang-stdx/collections'><span>Github</span></a></li>
+    <li><a href='dlang-stdx/collections/issues'><span>Issues</span></a></li>
+    <li><a href='https://dlang.org'><span>DLang</span></a></li>
+</ul></div>
+    <div class="search-container expand-container">        <a href="search.html" class="expand-toggle" title="Search"><span>Search</span></a>
+        
+    <div id="search-box">        <form method="get" action="https://google.com/search">
+            <input type="hidden" id="domains" name="domains" value="dlang.org">
+            <input type="hidden" id="sourceid" name="sourceid" value="google-search">
+            <input type="hidden" id="sitesearch" name="sitesearch" value="algorithm.dlang.io">
+            <span id="search-query"><input id="q" name="q" placeholder="Search"></span>
+            <span id="search-submit"><button type="submit"><i class="fa fa-search"></i><span>go</span></button></span>
+        </form>
+    </div>
+    </div>
+</div></div></div>
+
+<div class="container">    
+<div class="subnav-helper"></div> <div class="subnav">    <div class="head">        <h2>Library Reference</h2>
+        <p><a href="index.html">overview</a></p>
+    </div>
+    <ul>
+
+<li class='expand-container'><a class='expand-toggle' href='#'><span><em class="tt">stdx</em></span></a>
+<ul><li>  <a href="stdx_collections.html" title="stdx.collections"><span class="d_inlinecode donthyphenate notranslate">collections</span></a><ul><li>    <a href="stdx_collections_array.html" title="stdx.collections.array"><span class="d_inlinecode donthyphenate notranslate">array</span></a></li><li>    <a href="stdx_collections_common.html" title="stdx.collections.common"><span class="d_inlinecode donthyphenate notranslate">common</span></a></li><li>    <a href="stdx_collections_dlist.html" title="stdx.collections.dlist"><span class="d_inlinecode donthyphenate notranslate">dlist</span></a></li><li>    <a href="stdx_collections_hashtable.html" title="stdx.collections.hashtable"><span class="d_inlinecode donthyphenate notranslate">hashtable</span></a></li><li>    <a href="stdx_collections_slist.html" title="stdx.collections.slist"><span class="d_inlinecode donthyphenate notranslate">slist</span></a>
+  </li></ul>
+</li></ul>
+</li></ul>
+</div>
+    <div class="hyphenate" id="content">        
+<div id="tools"><div >	<div class="tip smallprint">		<a href="https://github.com/dlang-stdx/collections/issues">Report a bug</a>
+		<div >			If you spot a problem with this page, click here to create a Github issue.
+		</div>
+	</div>
+	<div class="tip smallprint">		<a href="https://github.com/dlang-stdx/collections/edit/master/source/stdx/collections/hashtable.d">Improve this page</a>
+		<div >			Quickly fork, edit online, and submit a pull request for this page.
+			Requires a signed-in GitHub account. This works well for small changes.
+			If you'd like to make larger changes you may want to consider using
+			a local clone.
+		</div>
+	</div>
+</div></div>
+        <h1><span class="d_inlinecode donthyphenate notranslate">stdx.collections.hashtable</span></h1>
+        <div class="quickindex" id="quickindex"></div>
+        
+<dl><dt class="d_decl"><div ><span class="def-anchor" id=".Hashtable"></span><div class="quickindex" id="quickindex.Hashtable"></div>struct <span class="def-anchor" id="Hashtable"></span><code class="ddoc_psymbol">Hashtable</code>(K, V);
+<br></div></dt>
+<dd>
+<dl><dt class="d_decl"><div ><span class="def-anchor" id=".Hashtable.this"></span><div class="quickindex" id="quickindex.Hashtable.this"></div>this<span class="template_param_list" title="Template parameter list">(A, this Q)</span>(A <code class="ddoc_param">allocator</code>)<br><span class="constraint">if (!is(Q == shared) &amp;&amp; (is(A == RCISharedAllocator) || !is(Q == immutable)) &amp;&amp; (is(A == RCIAllocator) || is(A == RCISharedAllocator)))</span>;
+<br></div></dt>
+<dd><div class="summary">Constructs a qualified hashtable that will use the provided
+ <code class="ddoc_param">allocator</code> object. For <span class="d_inlinecode donthyphenate notranslate">immutable</span> objects, a <span class="d_inlinecode donthyphenate notranslate">RCISharedAllocator</span> must
+ be supplied.
+</div><div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">A <code class="ddoc_param">allocator</code></td>
+<td class="param_desc">a <a href="std_experimental_<code class="ddoc_param">allocator</code>.html#.RCIAllocator"><span class="d_inlinecode donthyphenate notranslate">std.experimental.<code class="ddoc_param">allocator</code>.RCIAllocator</span></a> or
+                  <a href="std_experimental_<code class="ddoc_param">allocator</code>.html#.RCISharedAllocator"><span class="d_inlinecode donthyphenate notranslate">std.experimental.<code class="ddoc_param">allocator</code>.RCISharedAllocator</span></a>
+                  <code class="ddoc_param">allocator</code> object</td></tr>
+</table></div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">1</span>)</span></p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate"><span class="d_keyword">import</span> std.experimental.<span class="d_param">allocator</span> : theAllocator, processAllocator;
+
+<span class="d_keyword">auto</span> h = Hashtable!(<span class="d_keyword">int</span>, <span class="d_keyword">int</span>)(theAllocator);
+<span class="d_keyword">auto</span> ch = <span class="d_keyword">const</span> Hashtable!(<span class="d_keyword">int</span>, <span class="d_keyword">int</span>)(processAllocator);
+<span class="d_keyword">auto</span> ih = <span class="d_keyword">immutable</span> Hashtable!(<span class="d_keyword">int</span>, <span class="d_keyword">int</span>)(processAllocator);
+</pre>
+</div></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Hashtable.this.2"></span><div class="quickindex" id="quickindex.Hashtable.this.2"></div>this<span class="template_param_list" title="Template parameter list">(U, this Q)</span>(U <code class="ddoc_param">assocArr</code>)<br><span class="constraint">if (is(U == Value[Key], Value : V, Key : K))</span>;
+<br></div></dt>
+<dd><div class="summary">Constructs a qualified hashtable out of an associative array.
+ Because no allocator was provided, the hashtable will use the
+ <a href="GCAllocator_std_experimental_allocator_gc_allocator.html#."><span class="d_inlinecode donthyphenate notranslate">GCAllocator.std.experimental.allocator.gc_allocator</span></a>.
+</div><div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">U <code class="ddoc_param">assocArr</code></td>
+<td class="param_desc">an associative array</td></tr>
+</table></div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">m</span>)</span>, where <span class="d_inlinecode donthyphenate notranslate">m</span> is the number of (key, value) pairs
+             in the associative array.</p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate"><span class="d_keyword">import</span> std.algorithm.comparison : equal;
+
+<span class="d_keyword">auto</span> h = Hashtable!(<span class="d_keyword">int</span>, <span class="d_keyword">int</span>)([1 : 10]);
+<span class="d_keyword">assert</span>(equal(h.keys(), [1]));
+<span class="d_keyword">assert</span>(equal(h.values(), [10]));
+</pre>
+</div></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Hashtable.this.3"></span><div class="quickindex" id="quickindex.Hashtable.this.3"></div>this<span class="template_param_list" title="Template parameter list">(A, U, this Q)</span>(A <code class="ddoc_param">allocator</code>, U <code class="ddoc_param">assocArr</code>)<br><span class="constraint">if (!is(Q == shared) &amp;&amp; (is(A == RCISharedAllocator) || !is(Q == immutable)) &amp;&amp; (is(A == RCIAllocator) || is(A == RCISharedAllocator)) &amp;&amp; is(U == Value[Key], Value : V, Key : K))</span>;
+<br></div></dt>
+<dd><div class="summary">Constructs a qualified hashtable out of an associative array
+ that will use the provided <code class="ddoc_param">allocator</code> object.
+ For <span class="d_inlinecode donthyphenate notranslate">immutable</span> objects, a <span class="d_inlinecode donthyphenate notranslate">RCISharedAllocator</span> must be supplied.
+</div><div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">A <code class="ddoc_param">allocator</code></td>
+<td class="param_desc">a <a href="std_experimental_<code class="ddoc_param">allocator</code>.html#.RCIAllocator"><span class="d_inlinecode donthyphenate notranslate">std.experimental.<code class="ddoc_param">allocator</code>.RCIAllocator</span></a> or
+                  <a href="std_experimental_<code class="ddoc_param">allocator</code>.html#.RCISharedAllocator"><span class="d_inlinecode donthyphenate notranslate">std.experimental.<code class="ddoc_param">allocator</code>.RCISharedAllocator</span></a>
+                  <code class="ddoc_param">allocator</code> object</td></tr>
+<tr class="param"><td class="param_id">U <code class="ddoc_param">assocArr</code></td>
+<td class="param_desc">an associative array</td></tr>
+</table></div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">m</span>)</span>, where <span class="d_inlinecode donthyphenate notranslate">m</span> is the number of (key, value) pairs
+             in the associative array.</p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate"><span class="d_keyword">import</span> std.algorithm.comparison : equal;
+<span class="d_keyword">import</span> stdx.collections.array : Array;
+
+{
+    <span class="d_keyword">auto</span> h = Hashtable!(<span class="d_keyword">int</span>, <span class="d_keyword">int</span>)([1 : 10]);
+    <span class="d_keyword">assert</span>(equal(h.keys(), [1]));
+    <span class="d_keyword">assert</span>(equal(h.values(), [10]));
+}
+
+{
+    <span class="d_keyword">auto</span> h = <span class="d_keyword">immutable</span> Hashtable!(<span class="d_keyword">int</span>, <span class="d_keyword">int</span>)([1 : 10]);
+    <span class="d_keyword">assert</span>(equal(h.values(), Array!<span class="d_keyword">int</span>([10])));
+}
+</pre>
+</div></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Hashtable.insert"></span><div class="quickindex" id="quickindex.Hashtable.insert"></div>size_t <span class="def-anchor" id="insert"></span><code class="ddoc_psymbol">insert</code><span class="template_param_list" title="Template parameter list">(U)</span>(U <code class="ddoc_param">assocArr</code>)<br><span class="constraint">if (is(U == Value[Key], Value : V, Key : K))</span>;
+<br></div></dt>
+<dd><div class="summary">Insert the (key, value) pairs of an associative array into the
+ hashtable.
+</div><div class="description">If no allocator was provided when the list was created, the
+ <a href="GCAllocator_std_experimental_allocator_gc_allocator.html#."><span class="d_inlinecode donthyphenate notranslate">GCAllocator.std.experimental.allocator.gc_allocator</span></a> will be used.
+
+</div>
+<div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">U <code class="ddoc_param">assocArr</code></td>
+<td class="param_desc">an associative array</td></tr>
+</table></div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">m</span>)</span>, where <span class="d_inlinecode donthyphenate notranslate">m</span> is the number of (key, value) pairs
+             in the associative array.</p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate"><span class="d_keyword">import</span> std.algorithm.comparison : equal;
+
+<span class="d_keyword">auto</span> h = Hashtable!(<span class="d_keyword">int</span>, <span class="d_keyword">int</span>)();
+<span class="d_keyword">assert</span>(h.length == 0);
+h.<span class="d_psymbol">insert</span>([1 : 10]);
+<span class="d_keyword">assert</span>(equal(h.keys(), [1]));
+<span class="d_keyword">assert</span>(equal(h.values(), [10]));
+</pre>
+</div></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Hashtable.length"></span><div class="quickindex" id="quickindex.Hashtable.length"></div>const pure nothrow @nogc @safe size_t <span class="def-anchor" id="length"></span><code class="ddoc_psymbol">length</code>();
+<br></div></dt>
+<dd><div class="summary">Returns number of key-value pairs.
+</div><div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">a positive integer.
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">1</span>)</span>.</p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate"><span class="d_keyword">import</span> std.algorithm.comparison : equal;
+
+<span class="d_keyword">auto</span> h = Hashtable!(<span class="d_keyword">int</span>, <span class="d_keyword">int</span>)();
+<span class="d_keyword">assert</span>(h.<span class="d_psymbol">length</span> == 0);
+h.insert([1 : 10]);
+<span class="d_keyword">assert</span>(h.<span class="d_psymbol">length</span> == 1);
+</pre>
+</div></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Hashtable.size"></span><div class="quickindex" id="quickindex.Hashtable.size"></div>const pure nothrow @nogc @safe size_t <span class="def-anchor" id="size"></span><code class="ddoc_psymbol">size</code>();
+<br></div></dt>
+<dd><div class="summary">Returns number of buckets.
+</div><div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">a positive integer.
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">1</span>)</span>.</p></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Hashtable.empty"></span><div class="quickindex" id="quickindex.Hashtable.empty"></div>const pure nothrow @nogc @safe bool <span class="def-anchor" id="empty"></span><code class="ddoc_psymbol">empty</code>();
+<br></div></dt>
+<dd><div class="summary">Check if the hashtable is <span class="def-anchor" id="empty"></span><code class="ddoc_psymbol">empty</code>.
+</div><div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns"><span class="d_inlinecode donthyphenate notranslate">true</span> if there are no elements in the hashtable; <span class="d_inlinecode donthyphenate notranslate">false</span> otherwise.
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">1</span>)</span>.</p></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Hashtable.front"></span><div class="quickindex" id="quickindex.Hashtable.front"></div>ref auto <span class="def-anchor" id="front"></span><code class="ddoc_psymbol">front</code><span class="template_param_list" title="Template parameter list">(this _)</span>();
+<br></div></dt>
+<dd><div class="summary">Provide access to the first value in the hashtable. The user must check
+ that the hashtable isn't <span class="d_inlinecode donthyphenate notranslate">empty</span>, prior to calling this function.
+ There is no guarantee of the order of the values, as they are placed in
+ the hashtable based on the result of the hash function.
+</div><div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">a reference to the first found value.
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">length</span>)</span>.</p></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Hashtable.keys"></span><div class="quickindex" id="quickindex.Hashtable.keys"></div>Array!K <span class="def-anchor" id="keys"></span><code class="ddoc_psymbol">keys</code><span class="template_param_list" title="Template parameter list">(this _)</span>();
+<br></div></dt>
+<dd><div class="summary">Get an array with the existing <span class="def-anchor" id="keys"></span><code class="ddoc_psymbol">keys</code> in the hashtable.
+</div><div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">an <span class="d_inlinecode donthyphenate notranslate">Array!K</span> array of <span class="def-anchor" id="keys"></span><code class="ddoc_psymbol">keys</code>
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">size</span>)</span>.</p></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Hashtable.values"></span><div class="quickindex" id="quickindex.Hashtable.values"></div>Array!V <span class="def-anchor" id="values"></span><code class="ddoc_psymbol">values</code><span class="template_param_list" title="Template parameter list">(this _)</span>();
+<br></div></dt>
+<dd><div class="summary">Get an array with the existing <span class="def-anchor" id="values"></span><code class="ddoc_psymbol">values</code> in the hashtable.
+</div><div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">an <span class="d_inlinecode donthyphenate notranslate">Array!V</span> array of <span class="def-anchor" id="values"></span><code class="ddoc_psymbol">values</code>
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">length</span>)</span>.</p></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Hashtable.keyValuePairs"></span><div class="quickindex" id="quickindex.Hashtable.keyValuePairs"></div>Array!(Tuple!(K, "key", V, "value")) <span class="def-anchor" id="keyValuePairs"></span><code class="ddoc_psymbol">keyValuePairs</code><span class="template_param_list" title="Template parameter list">(this _)</span>();
+<br></div></dt>
+<dd><div class="summary">Get an array with the existing key-value pairs in the hashtable.
+</div><div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">an <span class="d_inlinecode donthyphenate notranslate">Array!(Tuple!(K, "key", V, "value"))</span> array of key-value pairs
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">length</span>)</span>.</p></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Hashtable.get"></span><div class="quickindex" id="quickindex.Hashtable.get"></div>V <span class="def-anchor" id="get"></span><code class="ddoc_psymbol">get</code><span class="template_param_list" title="Template parameter list">(this _)</span>(K <code class="ddoc_param">key</code>, V <code class="ddoc_param">nullValue</code>);
+<br></div></dt>
+<dd><div class="summary">Get the value corresponding to the given <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">key</code></span>; if it doesn't exist
+ return <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">nullValue</code></span>.
+</div><div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">K <code class="ddoc_param">key</code></td>
+<td class="param_desc">the <code class="ddoc_param">key</code> corresponding to a value</td></tr>
+<tr class="param"><td class="param_id">V <code class="ddoc_param">nullValue</code></td>
+<td class="param_desc">a value that will be returned if there is no such
+                  <code class="ddoc_param">key</code>-value pair</td></tr>
+</table></div></div>
+<div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">the corresponding <code class="ddoc_param">key</code> value, or <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">nullValue</code></span>.
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">n</span>)</span>, where n is the number of elements in the
+             corresponding <code class="ddoc_param">key</code> bucket.</p></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Hashtable.opIndex"></span><div class="quickindex" id="quickindex.Hashtable.opIndex"></div>Nullable!V <span class="def-anchor" id="opIndex"></span><code class="ddoc_psymbol">opIndex</code><span class="template_param_list" title="Template parameter list">(this _)</span>(K <code class="ddoc_param">key</code>);
+<br></div></dt>
+<dd><div class="summary">Get a <span class="d_inlinecode donthyphenate notranslate">Nullable!V</span> corresponding to the given <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">key</code></span> index.
+</div><div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">K <code class="ddoc_param">key</code></td>
+<td class="param_desc">the <code class="ddoc_param">key</code> corresponding to a value</td></tr>
+</table></div></div>
+<div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">a nullable value
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">n</span>)</span>, where n is the number of elements in the
+             corresponding <code class="ddoc_param">key</code> bucket.</p></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Hashtable.opIndexUnary"></span><div class="quickindex" id="quickindex.Hashtable.opIndexUnary"></div>Nullable!V <span class="def-anchor" id="opIndexUnary"></span><code class="ddoc_psymbol">opIndexUnary</code><span class="template_param_list" title="Template parameter list">(string op)</span>(K <code class="ddoc_param">key</code>);
+<br></div></dt>
+<dd><div class="summary">Apply a unary operation to the value corresponding to <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">key</code></span>.
+ If there isn't such a value, return a <span class="d_inlinecode donthyphenate notranslate">V.init</span> wrapped inside a
+ <span class="d_inlinecode donthyphenate notranslate">Nullable</span>.
+</div><div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">K <code class="ddoc_param">key</code></td>
+<td class="param_desc">the <code class="ddoc_param">key</code> corresponding to a value</td></tr>
+</table></div></div>
+<div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">a nullable value corresponding to the result or <span class="d_inlinecode donthyphenate notranslate">V.init</span>.
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">n</span>)</span>, where n is the number of elements in the
+             corresponding <code class="ddoc_param">key</code> bucket.</p></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Hashtable.opIndexAssign"></span><div class="quickindex" id="quickindex.Hashtable.opIndexAssign"></div>Nullable!V <span class="def-anchor" id="opIndexAssign"></span><code class="ddoc_psymbol">opIndexAssign</code><span class="template_param_list" title="Template parameter list">(U)</span>(U <code class="ddoc_param">val</code>, K <code class="ddoc_param">key</code>)<br><span class="constraint">if (isImplicitlyConvertible!(U, V))</span>;
+<br></div></dt>
+<dd><div class="summary">Assign <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">val</code></span> to the element corresponding to <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">key</code></span>.
+ If there isn't such a value, return a <span class="d_inlinecode donthyphenate notranslate">V.init</span> wrapped inside a
+ <span class="d_inlinecode donthyphenate notranslate">Nullable</span>.
+</div><div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">U <code class="ddoc_param">val</code></td>
+<td class="param_desc">the value to be set</td></tr>
+<tr class="param"><td class="param_id">K <code class="ddoc_param">key</code></td>
+<td class="param_desc">the <code class="ddoc_param">key</code> corresponding to a value</td></tr>
+</table></div></div>
+<div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">a nullable value corresponding to the result or <span class="d_inlinecode donthyphenate notranslate">V.init</span>.
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">n</span>)</span>, where n is the number of elements in the
+             corresponding <code class="ddoc_param">key</code> bucket.</p></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Hashtable.opIndexOpAssign"></span><div class="quickindex" id="quickindex.Hashtable.opIndexOpAssign"></div>Nullable!V <span class="def-anchor" id="opIndexOpAssign"></span><code class="ddoc_psymbol">opIndexOpAssign</code><span class="template_param_list" title="Template parameter list">(string op, U)</span>(U <code class="ddoc_param">val</code>, K <code class="ddoc_param">key</code>)<br><span class="constraint">if (isImplicitlyConvertible!(U, V))</span>;
+<br></div></dt>
+<dd><div class="summary">Assign to the element corresponding to <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">key</code></span> the result of
+ applying <span class="d_inlinecode donthyphenate notranslate">op</span> to the current value.
+ If there isn't such a value, return a <span class="d_inlinecode donthyphenate notranslate">V.init</span> wrapped inside a
+ <span class="d_inlinecode donthyphenate notranslate">Nullable</span>.
+</div><div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">U <code class="ddoc_param">val</code></td>
+<td class="param_desc">the value to be used with <span class="d_inlinecode donthyphenate notranslate">op</span></td></tr>
+<tr class="param"><td class="param_id">K <code class="ddoc_param">key</code></td>
+<td class="param_desc">the <code class="ddoc_param">key</code> corresponding to a value</td></tr>
+</table></div></div>
+<div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">a nullable value corresponding to the result or <span class="d_inlinecode donthyphenate notranslate">V.init</span>.
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">n</span>)</span>, where n is the number of elements in the
+             corresponding <code class="ddoc_param">key</code> bucket.</p></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Hashtable.opAssign"></span><div class="quickindex" id="quickindex.Hashtable.opAssign"></div>ref auto <span class="def-anchor" id="opAssign"></span><code class="ddoc_psymbol">opAssign</code><span class="template_param_list" title="Template parameter list">()</span>(auto ref typeof(this) <code class="ddoc_param">rhs</code>);
+<br></div></dt>
+<dd><div class="summary">Assign <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">rhs</code></span> to this hashtable. The current hashtable will now become
+ another reference to <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">rhs</code></span>, unless <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">rhs</code></span> is <span class="d_inlinecode donthyphenate notranslate">null</span>, in which case the
+ current hashtable will become empty. If <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">rhs</code></span> refers to the current
+ hashtable nothing will happen.
+</div><div class="description">If there are no more references to the previous hashtable the previous
+ hashtable will be destroyed; this leads to a <span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">length</span>)</span> complexity.
+
+</div>
+<div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">typeof(this) <code class="ddoc_param">rhs</code></td>
+<td class="param_desc">a reference to a hashtable</td></tr>
+</table></div></div>
+<div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">a reference to this hashtable
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">length</span>)</span>.</p></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Hashtable.clear"></span><div class="quickindex" id="quickindex.Hashtable.clear"></div>void <span class="def-anchor" id="clear"></span><code class="ddoc_psymbol">clear</code>();
+<br></div></dt>
+<dd><div class="summary">Removes all the elements in the current hashtable.
+</div><div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">length</span>)</span>.</p></div>
+
+</dd>
+</dl>
+</dd>
+</dl>
+
+        <div class="smallprint" id="copyright">Copyright &copy; 1999-2018 by the <a href="foundation_overview.html">D Language Foundation</a> | Page generated by
+<a href="spec/ddoc.html">Ddoc</a> on Thu May  3 12:49:01 2018
+</div>
+    </div>
+</div>
+
+    <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
+    <script type="text/javascript">window.jQuery || document.write('\x3Cscript src="js/jquery-1.7.2.min.js">\x3C/script>');</script>
+    <script type="text/javascript" src="js/dlang.js"></script>
+    
+    <script type="text/javascript" src="js/codemirror-compressed.js"></script>
+    <script type="text/javascript" src="js/run.js"></script>
+    <script type="text/javascript" src="js/run_examples.js"></script>
+
+<script type="text/javascript" src="js/listanchors.js"></script>
+<script type="text/javascript">jQuery(document).ready(listanchors);</script>
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.2.0/css/font-awesome.min.css">
+</body>
+</html>

@@ -1,0 +1,687 @@
+
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+<meta charset="utf-8">
+<meta name="keywords" content="algorithm numeric containers collections">
+<meta name="description" content="Collections library">
+<title>stdx.collections.array - D Programming Language</title>
+
+<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/custom.css">
+<link rel="stylesheet" href="css/print.css" media="print">
+<link rel="stylesheet" href="css/codemirror.css">
+<link rel="shortcut icon" href="favicon.ico">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.1, maximum-scale=10.0">
+
+</head>
+<body id='stdx.collections.array' class='std'>
+<script type="text/javascript">document.body.className += ' have-javascript';
+var currentVersion = "0.0.0";
+</script>
+<div id="top"><div class="helper"><div class="helper expand-container">    <a href="menu.html" title="Menu" class="hamburger expand-toggle"><span>Menu</span></a>
+    
+<div id="cssmenu"><ul>    <li><a href='dlang-stdx/collections'><span>Github</span></a></li>
+    <li><a href='dlang-stdx/collections/issues'><span>Issues</span></a></li>
+    <li><a href='https://dlang.org'><span>DLang</span></a></li>
+</ul></div>
+    <div class="search-container expand-container">        <a href="search.html" class="expand-toggle" title="Search"><span>Search</span></a>
+        
+    <div id="search-box">        <form method="get" action="https://google.com/search">
+            <input type="hidden" id="domains" name="domains" value="dlang.org">
+            <input type="hidden" id="sourceid" name="sourceid" value="google-search">
+            <input type="hidden" id="sitesearch" name="sitesearch" value="algorithm.dlang.io">
+            <span id="search-query"><input id="q" name="q" placeholder="Search"></span>
+            <span id="search-submit"><button type="submit"><i class="fa fa-search"></i><span>go</span></button></span>
+        </form>
+    </div>
+    </div>
+</div></div></div>
+
+<div class="container">    
+<div class="subnav-helper"></div> <div class="subnav">    <div class="head">        <h2>Library Reference</h2>
+        <p><a href="index.html">overview</a></p>
+    </div>
+    <ul>
+
+<li class='expand-container'><a class='expand-toggle' href='#'><span><em class="tt">stdx</em></span></a>
+<ul><li>  <a href="stdx_collections.html" title="stdx.collections"><span class="d_inlinecode donthyphenate notranslate">collections</span></a><ul><li>    <a href="stdx_collections_array.html" title="stdx.collections.array"><span class="d_inlinecode donthyphenate notranslate">array</span></a></li><li>    <a href="stdx_collections_common.html" title="stdx.collections.common"><span class="d_inlinecode donthyphenate notranslate">common</span></a></li><li>    <a href="stdx_collections_dlist.html" title="stdx.collections.dlist"><span class="d_inlinecode donthyphenate notranslate">dlist</span></a></li><li>    <a href="stdx_collections_hashtable.html" title="stdx.collections.hashtable"><span class="d_inlinecode donthyphenate notranslate">hashtable</span></a></li><li>    <a href="stdx_collections_slist.html" title="stdx.collections.slist"><span class="d_inlinecode donthyphenate notranslate">slist</span></a>
+  </li></ul>
+</li></ul>
+</li></ul>
+</div>
+    <div class="hyphenate" id="content">        
+<div id="tools"><div >	<div class="tip smallprint">		<a href="https://github.com/dlang-stdx/collections/issues">Report a bug</a>
+		<div >			If you spot a problem with this page, click here to create a Github issue.
+		</div>
+	</div>
+	<div class="tip smallprint">		<a href="https://github.com/dlang-stdx/collections/edit/master/source/stdx/collections/array.d">Improve this page</a>
+		<div >			Quickly fork, edit online, and submit a pull request for this page.
+			Requires a signed-in GitHub account. This works well for small changes.
+			If you'd like to make larger changes you may want to consider using
+			a local clone.
+		</div>
+	</div>
+</div></div>
+        <h1><span class="d_inlinecode donthyphenate notranslate">stdx.collections.array</span></h1>
+        <div class="quickindex" id="quickindex"></div>
+        
+<dl><dt class="d_decl"><div ><span class="def-anchor" id=".Array"></span><div class="quickindex" id="quickindex.Array"></div>struct <span class="def-anchor" id="Array"></span><code class="ddoc_psymbol">Array</code>(T);
+<br></div></dt>
+<dd>
+<dl><dt class="d_decl"><div ><span class="def-anchor" id=".Array.this"></span><div class="quickindex" id="quickindex.Array.this"></div>this<span class="template_param_list" title="Template parameter list">(A, this Q)</span>(A <code class="ddoc_param">allocator</code>)<br><span class="constraint">if (!is(Q == shared) &amp;&amp; (is(A == RCISharedAllocator) || !is(Q == immutable)) &amp;&amp; (is(A == RCIAllocator) || is(A == RCISharedAllocator)))</span>;
+<br></div></dt>
+<dd><div class="summary">Constructs a qualified array that will use the provided
+ <code class="ddoc_param">allocator</code> object. For <span class="d_inlinecode donthyphenate notranslate">immutable</span> objects, a <span class="d_inlinecode donthyphenate notranslate">RCISharedAllocator</span> must
+ be supplied.
+</div><div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">A <code class="ddoc_param">allocator</code></td>
+<td class="param_desc">a <a href="std_experimental_<code class="ddoc_param">allocator</code>.html#.RCIAllocator"><span class="d_inlinecode donthyphenate notranslate">std.experimental.<code class="ddoc_param">allocator</code>.RCIAllocator</span></a> or
+                  <a href="std_experimental_<code class="ddoc_param">allocator</code>.html#.RCISharedAllocator"><span class="d_inlinecode donthyphenate notranslate">std.experimental.<code class="ddoc_param">allocator</code>.RCISharedAllocator</span></a>
+                  <code class="ddoc_param">allocator</code> object</td></tr>
+</table></div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">1</span>)</span></p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate"><span class="d_keyword">import</span> std.experimental.<span class="d_param">allocator</span> : theAllocator, processAllocator;
+
+<span class="d_keyword">auto</span> a = Array!<span class="d_keyword">int</span>(theAllocator);
+<span class="d_keyword">auto</span> ca = <span class="d_keyword">const</span> Array!<span class="d_keyword">int</span>(processAllocator);
+<span class="d_keyword">auto</span> ia = <span class="d_keyword">immutable</span> Array!<span class="d_keyword">int</span>(processAllocator);
+</pre>
+</div></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.this.2"></span><div class="quickindex" id="quickindex.Array.this.2"></div>this<span class="template_param_list" title="Template parameter list">(U, this Q)</span>(U[] <code class="ddoc_param">values</code>...)<br><span class="constraint">if (isImplicitlyConvertible!(U, T))</span>;
+<br></div></dt>
+<dd><div class="summary">Constructs a qualified array out of a number of items.
+ Because no allocator was provided, the array will use the
+ <a href="GCAllocator_std_experimental_allocator_gc_allocator.html#."><span class="d_inlinecode donthyphenate notranslate">GCAllocator.std.experimental.allocator.gc_allocator</span></a>.
+</div><div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">U[] <code class="ddoc_param">values</code></td>
+<td class="param_desc">a variable number of items, either in the form of a
+               list or as a built-in array</td></tr>
+</table></div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">m</span>)</span>, where <span class="d_inlinecode donthyphenate notranslate">m</span> is the number of items.</p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate"><span class="d_keyword">import</span> std.algorithm.comparison : equal;
+
+<span class="d_comment">// Create a list from a list of ints
+</span>{
+    <span class="d_keyword">auto</span> a = Array!<span class="d_keyword">int</span>(1, 2, 3);
+    <span class="d_keyword">assert</span>(equal(a, [1, 2, 3]));
+}
+<span class="d_comment">// Create a list from an array of ints
+</span>{
+    <span class="d_keyword">auto</span> a = Array!<span class="d_keyword">int</span>([1, 2, 3]);
+    <span class="d_keyword">assert</span>(equal(a, [1, 2, 3]));
+}
+<span class="d_comment">// Create a list from a list from an input range
+</span>{
+    <span class="d_keyword">auto</span> a = Array!<span class="d_keyword">int</span>(1, 2, 3);
+    <span class="d_keyword">auto</span> a2 = Array!<span class="d_keyword">int</span>(a);
+    <span class="d_keyword">assert</span>(equal(a2, [1, 2, 3]));
+}
+</pre>
+</div></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.this.3"></span><div class="quickindex" id="quickindex.Array.this.3"></div>this<span class="template_param_list" title="Template parameter list">(A, U, this Q)</span>(A <code class="ddoc_param">allocator</code>, U[] <code class="ddoc_param">values</code>...)<br><span class="constraint">if (!is(Q == shared) &amp;&amp; (is(A == RCISharedAllocator) || !is(Q == immutable)) &amp;&amp; (is(A == RCIAllocator) || is(A == RCISharedAllocator)) &amp;&amp; isImplicitlyConvertible!(U, T))</span>;
+<br></div></dt>
+<dd><div class="summary">Constructs a qualified array out of a number of items
+ that will use the provided <code class="ddoc_param">allocator</code> object.
+ For <span class="d_inlinecode donthyphenate notranslate">immutable</span> objects, a <span class="d_inlinecode donthyphenate notranslate">RCISharedAllocator</span> must be supplied.
+</div><div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">A <code class="ddoc_param">allocator</code></td>
+<td class="param_desc">a <a href="std_experimental_<code class="ddoc_param">allocator</code>.html#.RCIAllocator"><span class="d_inlinecode donthyphenate notranslate">std.experimental.<code class="ddoc_param">allocator</code>.RCIAllocator</span></a> or
+                  <a href="std_experimental_<code class="ddoc_param">allocator</code>.html#.RCISharedAllocator"><span class="d_inlinecode donthyphenate notranslate">std.experimental.<code class="ddoc_param">allocator</code>.RCISharedAllocator</span></a>
+                  <code class="ddoc_param">allocator</code> object</td></tr>
+<tr class="param"><td class="param_id">U[] <code class="ddoc_param">values</code></td>
+<td class="param_desc">a variable number of items, either in the form of a
+               list or as a built-in array</td></tr>
+</table></div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">m</span>)</span>, where <span class="d_inlinecode donthyphenate notranslate">m</span> is the number of items.</p></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.this.4"></span><div class="quickindex" id="quickindex.Array.this.4"></div>this<span class="template_param_list" title="Template parameter list">(Stuff, this Q)</span>(Stuff <code class="ddoc_param">stuff</code>)<br><span class="constraint">if (isInputRange!Stuff &amp;&amp; !isInfinite!Stuff &amp;&amp; isImplicitlyConvertible!(ElementType!Stuff, T) &amp;&amp; !is(Stuff == T[]))</span>;
+<br></div></dt>
+<dd><div class="summary">Constructs a qualified array out of an
+ <a href="std_range_primitives.html#.isInputRange">input range</a>.
+ Because no allocator was provided, the array will use the
+ <a href="GCAllocator_std_experimental_allocator_gc_allocator.html#."><span class="d_inlinecode donthyphenate notranslate">GCAllocator.std.experimental.allocator.gc_allocator</span></a>.
+ If <span class="d_inlinecode donthyphenate notranslate">Stuff</span> defines <span class="d_inlinecode donthyphenate notranslate">length</span>, <span class="d_inlinecode donthyphenate notranslate">Array</span> will use it to reserve the
+ necessary amount of memory.
+</div><div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">Stuff <code class="ddoc_param">stuff</code></td>
+<td class="param_desc">an input range of elements that are implitictly convertible
+              to <span class="d_inlinecode donthyphenate notranslate">T</span></td></tr>
+</table></div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">m</span>)</span>, where <span class="d_inlinecode donthyphenate notranslate">m</span> is the number of elements in the range.</p></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.this.5"></span><div class="quickindex" id="quickindex.Array.this.5"></div>this<span class="template_param_list" title="Template parameter list">(A, Stuff, this Q)</span>(A <code class="ddoc_param">allocator</code>, Stuff <code class="ddoc_param">stuff</code>)<br><span class="constraint">if (!is(Q == shared) &amp;&amp; (is(A == RCISharedAllocator) || !is(Q == immutable)) &amp;&amp; (is(A == RCIAllocator) || is(A == RCISharedAllocator)) &amp;&amp; isInputRange!Stuff &amp;&amp; isImplicitlyConvertible!(ElementType!Stuff, T) &amp;&amp; !is(Stuff == T[]))</span>;
+<br></div></dt>
+<dd><div class="summary">Constructs a qualified array out of an
+ <a href="std_range_primitives.html#.isInputRange">input range</a>
+ that will use the provided <code class="ddoc_param">allocator</code> object.
+ For <span class="d_inlinecode donthyphenate notranslate">immutable</span> objects, a <span class="d_inlinecode donthyphenate notranslate">RCISharedAllocator</span> must be supplied.
+ If <span class="d_inlinecode donthyphenate notranslate">Stuff</span> defines <span class="d_inlinecode donthyphenate notranslate">length</span>, <span class="d_inlinecode donthyphenate notranslate">Array</span> will use it to reserve the
+ necessary amount of memory.
+</div><div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">A <code class="ddoc_param">allocator</code></td>
+<td class="param_desc">a <a href="std_experimental_<code class="ddoc_param">allocator</code>.html#.RCIAllocator"><span class="d_inlinecode donthyphenate notranslate">std.experimental.<code class="ddoc_param">allocator</code>.RCIAllocator</span></a> or
+                  <a href="std_experimental_<code class="ddoc_param">allocator</code>.html#.RCISharedAllocator"><span class="d_inlinecode donthyphenate notranslate">std.experimental.<code class="ddoc_param">allocator</code>.RCISharedAllocator</span></a>
+                  <code class="ddoc_param">allocator</code> object</td></tr>
+<tr class="param"><td class="param_id">Stuff <code class="ddoc_param">stuff</code></td>
+<td class="param_desc">an input range of elements that are implitictly convertible
+              to <span class="d_inlinecode donthyphenate notranslate">T</span></td></tr>
+</table></div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">m</span>)</span>, where <span class="d_inlinecode donthyphenate notranslate">m</span> is the number of elements in the range.</p></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.length"></span><div class="quickindex" id="quickindex.Array.length"></div>const pure nothrow @nogc @safe size_t <span class="def-anchor" id="length"></span><code class="ddoc_psymbol">length</code>();
+<br><br><span class="def-anchor" id=".Array.opDollar"></span><div class="quickindex" id="quickindex.Array.opDollar"></div>alias <span class="def-anchor" id="opDollar"></span><code class="ddoc_psymbol">opDollar</code> = length;
+<br></div></dt>
+<dd><div class="summary">Return the number of elements in the array..
+</div><div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">the <span class="def-anchor" id="length"></span><code class="ddoc_psymbol">length</code> of the array.
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">1</span>)</span>.</p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate"><span class="d_keyword">auto</span> a = Array!<span class="d_keyword">int</span>(1, 2, 3);
+<span class="d_keyword">assert</span>(a.<span class="d_psymbol">length</span> == 3);
+<span class="d_keyword">assert</span>(a[$ - 1] == 3);
+</pre>
+</div></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.forceLength"></span><div class="quickindex" id="quickindex.Array.forceLength"></div>pure nothrow @nogc @trusted void <span class="def-anchor" id="forceLength"></span><code class="ddoc_psymbol">forceLength</code>(size_t <code class="ddoc_param">len</code>);
+<br></div></dt>
+<dd><div class="summary">Set the length of the array to <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">len</code></span>. <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">len</code></span> must be less than or equal
+ to the <span class="d_inlinecode donthyphenate notranslate">capacity</span> of the array.
+</div><div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">size_t <code class="ddoc_param">len</code></td>
+<td class="param_desc">a positive integer</td></tr>
+</table></div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">1</span>)</span>.</p></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.capacity"></span><div class="quickindex" id="quickindex.Array.capacity"></div>const pure nothrow @nogc @safe size_t <span class="def-anchor" id="capacity"></span><code class="ddoc_psymbol">capacity</code>();
+<br></div></dt>
+<dd><div class="summary">Get the available <span class="def-anchor" id="capacity"></span><code class="ddoc_psymbol">capacity</code> of the <span class="d_inlinecode donthyphenate notranslate">array</span>; this is equal to <span class="d_inlinecode donthyphenate notranslate">length</span> of
+ the array plus the available pre-allocated, free, space.
+</div><div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">a positive integer denoting the <span class="def-anchor" id="capacity"></span><code class="ddoc_psymbol">capacity</code>.
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">1</span>)</span>.</p></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.reserve"></span><div class="quickindex" id="quickindex.Array.reserve"></div>void <span class="def-anchor" id="reserve"></span><code class="ddoc_psymbol">reserve</code>(size_t <code class="ddoc_param">n</code>);
+<br></div></dt>
+<dd><div class="summary">Reserve enough memory from the allocator to store <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">n</code></span> elements.
+ If the current <span class="d_inlinecode donthyphenate notranslate">capacity</span> exceeds <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">n</code></span> nothing will happen.
+ If <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">n</code></span> exceeds the current <span class="d_inlinecode donthyphenate notranslate">capacity</span>, an attempt to <span class="d_inlinecode donthyphenate notranslate">expand</span> the
+ current array is made. If <span class="d_inlinecode donthyphenate notranslate">expand</span> is successful, all the expanded
+ elements are default initialized to <span class="d_inlinecode donthyphenate notranslate">T.init</span>. If the <span class="d_inlinecode donthyphenate notranslate">expand</span> fails
+ a new buffer will be allocated, the old elements of the array will be
+ copied and the new elements will be default initialized to <span class="d_inlinecode donthyphenate notranslate">T.init</span>.
+</div><div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">size_t <code class="ddoc_param">n</code></td>
+<td class="param_desc">a positive integer</td></tr>
+</table></div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">max(length, <code class="ddoc_param">n</code>)</span>)</span>.</p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate"><span class="d_keyword">import</span> std.algorithm.comparison : equal;
+
+<span class="d_keyword">auto</span> stuff = [1, 2, 3];
+Array!<span class="d_keyword">int</span> a;
+a.<span class="d_psymbol">reserve</span>(stuff.length);
+a ~= stuff;
+<span class="d_keyword">assert</span>(equal(a, stuff));
+</pre>
+</div></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.insert"></span><div class="quickindex" id="quickindex.Array.insert"></div>size_t <span class="def-anchor" id="insert"></span><code class="ddoc_psymbol">insert</code><span class="template_param_list" title="Template parameter list">(Stuff)</span>(size_t <code class="ddoc_param">pos</code>, Stuff <code class="ddoc_param">stuff</code>)<br><span class="constraint">if (!isArray!(typeof(<code class="ddoc_param">stuff</code>)) &amp;&amp; isInputRange!Stuff &amp;&amp; !isInfinite!Stuff &amp;&amp; isImplicitlyConvertible!(ElementType!Stuff, T))</span>;
+<br><br>size_t <span class="def-anchor" id="insert"></span><code class="ddoc_psymbol">insert</code><span class="template_param_list" title="Template parameter list">(Stuff)</span>(size_t <code class="ddoc_param">pos</code>, Stuff[] <code class="ddoc_param">stuff</code>...)<br><span class="constraint">if (isImplicitlyConvertible!(Stuff, T))</span>;
+<br></div></dt>
+<dd><div class="summary">Inserts the elements of an
+ <a href="std_range_primitives.html#.isInputRange">input range</a>, or a
+ variable number of items, at the given <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">pos</code></span>.
+</div><div class="description">If no allocator was provided when the array was created, the
+ <a href="GCAllocator_std_experimental_allocator_gc_allocator.html#."><span class="d_inlinecode donthyphenate notranslate">GCAllocator.std.experimental.allocator.gc_allocator</span></a> will be used.
+ If <span class="d_inlinecode donthyphenate notranslate">Stuff</span> defines <span class="d_inlinecode donthyphenate notranslate">length</span>, <span class="d_inlinecode donthyphenate notranslate">Array</span> will use it to reserve the
+ necessary amount of memory.
+
+</div>
+<div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">size_t <code class="ddoc_param">pos</code></td>
+<td class="param_desc">a positive integer</td></tr>
+<tr class="param"><td class="param_id">Stuff <code class="ddoc_param">stuff</code></td>
+<td class="param_desc">an input range of elements that are implitictly convertible
+              to <span class="d_inlinecode donthyphenate notranslate">T</span>; a variable number of items either in the form of a
+              list or as a built-in array</td></tr>
+</table></div></div>
+<div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">the number of elements inserted
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">max(length, <code class="ddoc_param">pos</code> + m)</span>)</span>, where <span class="d_inlinecode donthyphenate notranslate">m</span> is the number of
+             elements in the range.</p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate"><span class="d_keyword">import</span> std.algorithm.comparison : equal;
+
+Array!<span class="d_keyword">int</span> a;
+<span class="d_keyword">assert</span>(a.empty);
+
+size_t <span class="d_param">pos</span> = 0;
+<span class="d_param">pos</span> += a.<span class="d_psymbol">insert</span>(<span class="d_param">pos</span>, 1);
+<span class="d_param">pos</span> += a.<span class="d_psymbol">insert</span>(<span class="d_param">pos</span>, [2, 3]);
+<span class="d_keyword">assert</span>(equal(a, [1, 2, 3]));
+</pre>
+</div></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.isUnique"></span><div class="quickindex" id="quickindex.Array.isUnique"></div>pure nothrow @nogc @safe bool <span class="def-anchor" id="isUnique"></span><code class="ddoc_psymbol">isUnique</code><span class="template_param_list" title="Template parameter list">(this _)</span>();
+<br></div></dt>
+<dd><div class="summary">Check whether there are no more references to this array instance.
+</div><div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns"><span class="d_inlinecode donthyphenate notranslate">true</span> if this is the only reference to this array instance;
+      <span class="d_inlinecode donthyphenate notranslate">false</span> otherwise.
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">1</span>)</span>.</p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate"><span class="d_keyword">auto</span> a = Array!<span class="d_keyword">int</span>(24, 42);
+<span class="d_keyword">assert</span>(a.<span class="d_psymbol">isUnique</span>);
+{
+    <span class="d_keyword">auto</span> a2 = a;
+    <span class="d_keyword">assert</span>(!a.<span class="d_psymbol">isUnique</span>);
+    a2.front = 0;
+    <span class="d_keyword">assert</span>(a.front == 0);
+} <span class="d_comment">// a2 goes out of scope
+</span><span class="d_keyword">assert</span>(a.<span class="d_psymbol">isUnique</span>);
+</pre>
+</div></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.empty"></span><div class="quickindex" id="quickindex.Array.empty"></div>const pure nothrow @nogc @safe bool <span class="def-anchor" id="empty"></span><code class="ddoc_psymbol">empty</code>();
+<br></div></dt>
+<dd><div class="summary">Check if the array is <span class="def-anchor" id="empty"></span><code class="ddoc_psymbol">empty</code>.
+</div><div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns"><span class="d_inlinecode donthyphenate notranslate">true</span> if there are no elements in the array; <span class="d_inlinecode donthyphenate notranslate">false</span> otherwise.
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">1</span>)</span>.</p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate">Array!<span class="d_keyword">int</span> a;
+<span class="d_keyword">assert</span>(a.<span class="d_psymbol">empty</span>);
+size_t pos = 0;
+a.insert(pos, 1);
+<span class="d_keyword">assert</span>(!a.<span class="d_psymbol">empty</span>);
+</pre>
+</div></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.front"></span><div class="quickindex" id="quickindex.Array.front"></div>ref auto <span class="def-anchor" id="front"></span><code class="ddoc_psymbol">front</code><span class="template_param_list" title="Template parameter list">(this _)</span>();
+<br></div></dt>
+<dd><div class="summary">Provide access to the first element in the array. The user must check
+ that the array isn't <span class="d_inlinecode donthyphenate notranslate">empty</span>, prior to calling this function.
+</div><div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">a reference to the first element.
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">1</span>)</span>.</p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate"><span class="d_keyword">auto</span> a = Array!<span class="d_keyword">int</span>(1, 2, 3);
+<span class="d_keyword">assert</span>(a.<span class="d_psymbol">front</span> == 1);
+a.<span class="d_psymbol">front</span> = 0;
+<span class="d_keyword">assert</span>(a.<span class="d_psymbol">front</span> == 0);
+</pre>
+</div></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.popFront"></span><div class="quickindex" id="quickindex.Array.popFront"></div>pure nothrow @nogc @safe void <span class="def-anchor" id="popFront"></span><code class="ddoc_psymbol">popFront</code>();
+<br></div></dt>
+<dd><div class="summary">Advance to the next element in the array. The user must check
+ that the array isn't <span class="d_inlinecode donthyphenate notranslate">empty</span>, prior to calling this function.
+</div><div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">1</span>)</span>.</p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate"><span class="d_keyword">auto</span> stuff = [1, 2, 3];
+<span class="d_keyword">auto</span> a = Array!<span class="d_keyword">int</span>(stuff);
+size_t i = 0;
+<span class="d_keyword">while</span> (!a.empty)
+{
+    <span class="d_keyword">assert</span>(a.front == stuff[i++]);
+    a.<span class="d_psymbol">popFront</span>;
+}
+<span class="d_keyword">assert</span>(a.empty);
+</pre>
+</div></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.tail"></span><div class="quickindex" id="quickindex.Array.tail"></div>Qualified <span class="def-anchor" id="tail"></span><code class="ddoc_psymbol">tail</code><span class="template_param_list" title="Template parameter list">(this Qualified)</span>();
+<br></div></dt>
+<dd><div class="summary">Advance to the next element in the array. The user must check
+ that the array isn't <span class="d_inlinecode donthyphenate notranslate">empty</span>, prior to calling this function.
+</div><div class="description">This must be used in order to iterate through a <span class="d_inlinecode donthyphenate notranslate">const</span> or <span class="d_inlinecode donthyphenate notranslate">immutable</span>
+ array For a mutable array this is equivalent to calling <span class="d_inlinecode donthyphenate notranslate">popFront</span>.
+
+</div>
+<div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">an array that starts with the next element in the original array.
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">1</span>)</span>.</p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate"><span class="d_keyword">auto</span> ia = <span class="d_keyword">immutable</span> Array!<span class="d_keyword">int</span>([1, 2, 3]);
+<span class="d_keyword">assert</span>(ia.<span class="d_psymbol">tail</span>.front == 2);
+</pre>
+</div></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.each"></span><div class="quickindex" id="quickindex.Array.each"></div>template <span class="def-anchor" id="each"></span><code class="ddoc_psymbol">each</code>(alias fun)<br></div></dt>
+<dd><div class="summary">Eagerly iterate over <span class="def-anchor" id="each"></span><code class="ddoc_psymbol">each</code> element in the array and call <span class="d_inlinecode donthyphenate notranslate">fun</span> over <span class="def-anchor" id="each"></span><code class="ddoc_psymbol">each</code>
+ element. This should be used to iterate through <span class="d_inlinecode donthyphenate notranslate">const</span> and <span class="d_inlinecode donthyphenate notranslate">immutable</span>
+ arrays.
+</div><div class="description">Normally, the entire array is iterated. If partial iteration (early stopping)
+ is desired, <span class="d_inlinecode donthyphenate notranslate">fun</span> needs to return a value of type
+ <a href="std_typecons.html#.Flag"><span class="d_inlinecode donthyphenate notranslate">std.typecons.Flag</span></a><span class="d_inlinecode donthyphenate notranslate">!"<span class="def-anchor" id="each"></span><code class="ddoc_psymbol">each</code>"</span> (<span class="d_inlinecode donthyphenate notranslate">Yes.<span class="def-anchor" id="each"></span><code class="ddoc_psymbol">each</code></span> to continue iteration, or
+ <span class="d_inlinecode donthyphenate notranslate">No.<span class="def-anchor" id="each"></span><code class="ddoc_psymbol">each</code></span> to stop).
+
+</div>
+<div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">fun</td>
+<td class="param_desc">unary function to apply on <span class="def-anchor" id="each"></span><code class="ddoc_psymbol">each</code> element of the array.</td></tr>
+</table></div></div>
+<div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns"><span class="d_inlinecode donthyphenate notranslate">Yes.<span class="def-anchor" id="each"></span><code class="ddoc_psymbol">each</code></span> if it has iterated through all the elements in the array,
+      or <span class="d_inlinecode donthyphenate notranslate">No.<span class="def-anchor" id="each"></span><code class="ddoc_psymbol">each</code></span> otherwise.
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">n</span>)</span>.</p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate"><span class="d_keyword">import</span> std.typecons : Flag, Yes, No;
+
+<span class="d_keyword">auto</span> ia = <span class="d_keyword">immutable</span> Array!<span class="d_keyword">int</span>([1, 2, 3]);
+
+<span class="d_keyword">static</span> <span class="d_keyword">bool</span> foo(<span class="d_keyword">int</span> x) { <span class="d_keyword">return</span> x &gt; 0; }
+<span class="d_keyword">static</span> Flag!<span class="d_string">"each"</span> bar(<span class="d_keyword">int</span> x) { <span class="d_keyword">return</span> x &gt; 1 ? Yes.<span class="d_psymbol">each</span> : No.<span class="d_psymbol">each</span>; }
+
+<span class="d_keyword">assert</span>(ia.<span class="d_psymbol">each</span>!foo == Yes.<span class="d_psymbol">each</span>);
+<span class="d_keyword">assert</span>(ia.<span class="d_psymbol">each</span>!bar == No.<span class="d_psymbol">each</span>);
+</pre>
+</div></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.save"></span><div class="quickindex" id="quickindex.Array.save"></div>ref auto <span class="def-anchor" id="save"></span><code class="ddoc_psymbol">save</code><span class="template_param_list" title="Template parameter list">(this _)</span>();
+<br></div></dt>
+<dd><div class="summary">Perform a shallow copy of the array.
+</div><div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">a new reference to the current array.
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">1</span>)</span>.</p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate"><span class="d_keyword">auto</span> stuff = [1, 2, 3];
+<span class="d_keyword">auto</span> a = Array!<span class="d_keyword">int</span>(stuff);
+size_t i = 0;
+
+<span class="d_keyword">auto</span> tmp = a.<span class="d_psymbol">save</span>;
+<span class="d_keyword">while</span> (!tmp.empty)
+{
+    <span class="d_keyword">assert</span>(tmp.front == stuff[i++]);
+    tmp.popFront;
+}
+<span class="d_keyword">assert</span>(tmp.empty);
+<span class="d_keyword">assert</span>(!a.empty);
+</pre>
+</div></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.dup"></span><div class="quickindex" id="quickindex.Array.dup"></div>Array!T <span class="def-anchor" id="dup"></span><code class="ddoc_psymbol">dup</code><span class="template_param_list" title="Template parameter list">(this Q)</span>();
+<br></div></dt>
+<dd><div class="summary">Perform a copy of the array. This will create a new array that will copy
+ the elements of the current array. This will <span class="d_inlinecode donthyphenate notranslate">NOT</span> call <span class="d_inlinecode donthyphenate notranslate"><span class="def-anchor" id="dup"></span><code class="ddoc_psymbol">dup</code></span> on the
+ elements of the array, regardless if <span class="d_inlinecode donthyphenate notranslate">T</span> defines it or not.
+</div><div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">a new mutable array.
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">n</span>)</span>.</p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate"><span class="d_keyword">import</span> std.algorithm.comparison : equal;
+
+<span class="d_keyword">auto</span> stuff = [1, 2, 3];
+<span class="d_keyword">auto</span> a = <span class="d_keyword">immutable</span> Array!<span class="d_keyword">int</span>(stuff);
+<span class="d_keyword">auto</span> aDup = a.<span class="d_psymbol">dup</span>;
+<span class="d_keyword">assert</span>(equal(aDup, stuff));
+aDup.front = 0;
+<span class="d_keyword">assert</span>(aDup.front == 0);
+<span class="d_keyword">assert</span>(a.front == 1);
+</pre>
+</div></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.opSlice"></span><div class="quickindex" id="quickindex.Array.opSlice"></div>Qualified <span class="def-anchor" id="opSlice"></span><code class="ddoc_psymbol">opSlice</code><span class="template_param_list" title="Template parameter list">(this Qualified)</span>();
+<br></div></dt>
+<dd><div class="summary">Return a slice to the current array. This is equivalent to calling
+ <span class="d_inlinecode donthyphenate notranslate">save</span>.
+</div><div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">an array that references the current array.
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">1</span>)</span></p></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.opSlice.2"></span><div class="quickindex" id="quickindex.Array.opSlice.2"></div>Qualified <span class="def-anchor" id="opSlice"></span><code class="ddoc_psymbol">opSlice</code><span class="template_param_list" title="Template parameter list">(this Qualified)</span>(size_t <code class="ddoc_param">start</code>, size_t <code class="ddoc_param">end</code>);
+<br></div></dt>
+<dd><div class="summary">Return a slice to the current array that is bounded by <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">start</code></span> and <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">end</code></span>.
+ <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">start</code></span> must be less than or equal to <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">end</code></span> and <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">end</code></span> must be less than
+ or equal to <span class="d_inlinecode donthyphenate notranslate">length</span>.
+</div><div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">an array that references the current array.
+
+</div></div>
+<div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">size_t <code class="ddoc_param">start</code></td>
+<td class="param_desc">a positive integer</td></tr>
+<tr class="param"><td class="param_id">size_t <code class="ddoc_param">end</code></td>
+<td class="param_desc">a positive integer</td></tr>
+</table></div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">1</span>)</span></p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate"><span class="d_keyword">import</span> std.algorithm.comparison : equal;
+
+<span class="d_keyword">auto</span> stuff = [1, 2, 3];
+<span class="d_keyword">auto</span> a = Array!<span class="d_keyword">int</span>(stuff);
+<span class="d_keyword">assert</span>(equal(a[], stuff));
+<span class="d_keyword">assert</span>(equal(a[1 .. $], stuff[1 .. $]));
+</pre>
+</div></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.opIndex"></span><div class="quickindex" id="quickindex.Array.opIndex"></div>ref auto <span class="def-anchor" id="opIndex"></span><code class="ddoc_psymbol">opIndex</code><span class="template_param_list" title="Template parameter list">(this _)</span>(size_t <code class="ddoc_param">idx</code>);
+<br></div></dt>
+<dd><div class="summary">Provide access to the element at <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">idx</code></span> in the array.
+ <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">idx</code></span> must be less than <span class="d_inlinecode donthyphenate notranslate">length</span>.
+</div><div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">a reference to the element found at <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">idx</code></span>.
+
+</div></div>
+<div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">size_t <code class="ddoc_param">idx</code></td>
+<td class="param_desc">a positive integer</td></tr>
+</table></div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">1</span>)</span>.</p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate"><span class="d_keyword">auto</span> a = Array!<span class="d_keyword">int</span>([1, 2, 3]);
+<span class="d_keyword">assert</span>(a[2] == 3);
+</pre>
+</div></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.opIndexUnary"></span><div class="quickindex" id="quickindex.Array.opIndexUnary"></div>ref auto <span class="def-anchor" id="opIndexUnary"></span><code class="ddoc_psymbol">opIndexUnary</code><span class="template_param_list" title="Template parameter list">(string op)</span>(size_t <code class="ddoc_param">idx</code>);
+<br></div></dt>
+<dd><div class="summary">Apply an unary operation to the element at <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">idx</code></span> in the array.
+ <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">idx</code></span> must be less than <span class="d_inlinecode donthyphenate notranslate">length</span>.
+</div><div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">a reference to the element found at <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">idx</code></span>.
+
+</div></div>
+<div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">size_t <code class="ddoc_param">idx</code></td>
+<td class="param_desc">a positive integer</td></tr>
+</table></div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">1</span>)</span>.</p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate"><span class="d_keyword">auto</span> a = Array!<span class="d_keyword">int</span>([1, 2, 3]);
+<span class="d_keyword">int</span> x = --a[2];
+<span class="d_keyword">assert</span>(a[2] == 2);
+<span class="d_keyword">assert</span>(x == 2);
+</pre>
+</div></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.opIndexAssign"></span><div class="quickindex" id="quickindex.Array.opIndexAssign"></div>ref auto <span class="def-anchor" id="opIndexAssign"></span><code class="ddoc_psymbol">opIndexAssign</code><span class="template_param_list" title="Template parameter list">(U)</span>(U <code class="ddoc_param">elem</code>, size_t <code class="ddoc_param">idx</code>)<br><span class="constraint">if (isImplicitlyConvertible!(U, T))</span>;
+<br></div></dt>
+<dd><div class="summary">Assign <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">elem</code></span> to the element at <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">idx</code></span> in the array.
+ <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">idx</code></span> must be less than <span class="d_inlinecode donthyphenate notranslate">length</span>.
+</div><div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">a reference to the element found at <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">idx</code></span>.
+
+</div></div>
+<div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">U <code class="ddoc_param">elem</code></td>
+<td class="param_desc">an element that is implicitly convertible to <span class="d_inlinecode donthyphenate notranslate">T</span></td></tr>
+<tr class="param"><td class="param_id">size_t <code class="ddoc_param">idx</code></td>
+<td class="param_desc">a positive integer</td></tr>
+</table></div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">1</span>)</span>.</p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate"><span class="d_keyword">auto</span> a = Array!<span class="d_keyword">int</span>([1, 2, 3]);
+a[2] = 2;
+<span class="d_keyword">assert</span>(a[2] == 2);
+(a[2] = 3)++;
+<span class="d_keyword">assert</span>(a[2] == 4);
+</pre>
+</div></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.opIndexOpAssign"></span><div class="quickindex" id="quickindex.Array.opIndexOpAssign"></div>ref auto <span class="def-anchor" id="opIndexOpAssign"></span><code class="ddoc_psymbol">opIndexOpAssign</code><span class="template_param_list" title="Template parameter list">(string op, U)</span>(U <code class="ddoc_param">elem</code>, size_t <code class="ddoc_param">idx</code>)<br><span class="constraint">if (isImplicitlyConvertible!(U, T))</span>;
+<br></div></dt>
+<dd><div class="summary">Assign to the element at <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">idx</code></span> in the array the result of
+ <span class="d_inlinecode donthyphenate notranslate">a[<code class="ddoc_param">idx</code>] op <code class="ddoc_param">elem</code></span>.
+ <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">idx</code></span> must be less than <span class="d_inlinecode donthyphenate notranslate">length</span>.
+</div><div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">a reference to the element found at <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">idx</code></span>.
+
+</div></div>
+<div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">U <code class="ddoc_param">elem</code></td>
+<td class="param_desc">an element that is implicitly convertible to <span class="d_inlinecode donthyphenate notranslate">T</span></td></tr>
+<tr class="param"><td class="param_id">size_t <code class="ddoc_param">idx</code></td>
+<td class="param_desc">a positive integer</td></tr>
+</table></div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">1</span>)</span>.</p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate"><span class="d_keyword">auto</span> a = Array!<span class="d_keyword">int</span>([1, 2, 3]);
+a[2] += 2;
+<span class="d_keyword">assert</span>(a[2] == 5);
+(a[2] += 3)++;
+<span class="d_keyword">assert</span>(a[2] == 9);
+</pre>
+</div></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.opBinary"></span><div class="quickindex" id="quickindex.Array.opBinary"></div>ref auto <span class="def-anchor" id="opBinary"></span><code class="ddoc_psymbol">opBinary</code><span class="template_param_list" title="Template parameter list">(string op, U)</span>(auto ref U <code class="ddoc_param">rhs</code>)<br><span class="constraint">if (op == "~" &amp;&amp; (is(U : const(typeof(this))) || is(U : T) || isInputRange!U &amp;&amp; isImplicitlyConvertible!(ElementType!U, T)))</span>;
+<br></div></dt>
+<dd><div class="summary">Create a new array that results from the concatenation of this array
+ with <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">rhs</code></span>.
+</div><div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">U <code class="ddoc_param">rhs</code></td>
+<td class="param_desc">can be an element that is implicitly convertible to <span class="d_inlinecode donthyphenate notranslate">T</span>, an
+            input range of such elements, or another <span class="d_inlinecode donthyphenate notranslate">Array</span></td></tr>
+</table></div></div>
+<div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">the newly created array
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">n + m</span>)</span>, where <span class="d_inlinecode donthyphenate notranslate">m</span> is the number of elements in <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">rhs</code></span>.</p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate"><span class="d_keyword">import</span> std.algorithm.comparison : equal;
+
+<span class="d_keyword">auto</span> a = Array!<span class="d_keyword">int</span>(1);
+<span class="d_keyword">auto</span> a2 = a ~ 2;
+
+<span class="d_keyword">assert</span>(equal(a2, [1, 2]));
+a.front = 0;
+<span class="d_keyword">assert</span>(equal(a2, [1, 2]));
+</pre>
+</div></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.opAssign"></span><div class="quickindex" id="quickindex.Array.opAssign"></div>ref auto <span class="def-anchor" id="opAssign"></span><code class="ddoc_psymbol">opAssign</code><span class="template_param_list" title="Template parameter list">()</span>(auto ref typeof(this) <code class="ddoc_param">rhs</code>);
+<br></div></dt>
+<dd><div class="summary">Assign <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">rhs</code></span> to this array. The current array will now become another
+ reference to <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">rhs</code></span>, unless <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">rhs</code></span> is <span class="d_inlinecode donthyphenate notranslate">null</span>, in which case the current
+ array will become empty. If <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">rhs</code></span> refers to the current array nothing will
+ happen.
+</div><div class="description">If there are no more references to the previous array, the previous
+ array will be destroyed; this leads to a <span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">n</span>)</span> complexity.
+
+</div>
+<div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">typeof(this) <code class="ddoc_param">rhs</code></td>
+<td class="param_desc">a reference to an array</td></tr>
+</table></div></div>
+<div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">a reference to this array
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">n</span>)</span>.</p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate"><span class="d_keyword">import</span> std.algorithm.comparison : equal;
+
+<span class="d_keyword">auto</span> a = Array!<span class="d_keyword">int</span>(1);
+<span class="d_keyword">auto</span> a2 = Array!<span class="d_keyword">int</span>(1, 2);
+
+a = a2; <span class="d_comment">// this will free the old a
+</span><span class="d_keyword">assert</span>(equal(a, [1, 2]));
+a.front = 0;
+<span class="d_keyword">assert</span>(equal(a2, [0, 2]));
+</pre>
+</div></div>
+
+</dd>
+<dt class="d_decl"><div ><span class="def-anchor" id=".Array.opOpAssign"></span><div class="quickindex" id="quickindex.Array.opOpAssign"></div>ref auto <span class="def-anchor" id="opOpAssign"></span><code class="ddoc_psymbol">opOpAssign</code><span class="template_param_list" title="Template parameter list">(string op, U)</span>(auto ref U <code class="ddoc_param">rhs</code>)<br><span class="constraint">if (op == "~" &amp;&amp; (is(U == typeof(this)) || is(U : T) || isInputRange!U &amp;&amp; isImplicitlyConvertible!(ElementType!U, T)))</span>;
+<br></div></dt>
+<dd><div class="summary">Append the elements of <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">rhs</code></span> at the end of the array.
+</div><div class="description">If no allocator was provided when the list was created, the
+ <a href="GCAllocator_std_experimental_allocator_gc_allocator.html#."><span class="d_inlinecode donthyphenate notranslate">GCAllocator.std.experimental.allocator.gc_allocator</span></a> will be used.
+
+</div>
+<div class="keyval Parameters"><span class="key keyParameters">Parameters:</span> <div class="val valParameters"><table class="params"><tr class="param"><td class="param_id">U <code class="ddoc_param">rhs</code></td>
+<td class="param_desc">can be an element that is implicitly convertible to <span class="d_inlinecode donthyphenate notranslate">T</span>, an
+            input range of such elements, or another <span class="d_inlinecode donthyphenate notranslate">Array</span></td></tr>
+</table></div></div>
+<div class="keyval Returns"><span class="key keyReturns">Returns:</span> <div class="val valReturns">a reference to this array
+
+</div></div>
+<div class="val"><p class="keyval Section"><span class="key keySection">Complexity</span>
+<span class="bigoh">&Omicron;(<span class="d_inlinecode donthyphenate notranslate">n + m</span>)</span>, where <span class="d_inlinecode donthyphenate notranslate">m</span> is the number of elements in <span class="d_inlinecode donthyphenate notranslate"><code class="ddoc_param">rhs</code></span>.</p></div>
+<span class="dlang_runnable"></span><div class="keyval Examples"><span class="key keyExamples">Examples:</span> <div class="val valExamples"><pre class="d_code notranslate"><span class="d_keyword">import</span> std.algorithm.comparison : equal;
+
+Array!<span class="d_keyword">int</span> a;
+<span class="d_keyword">auto</span> a2 = Array!<span class="d_keyword">int</span>(4, 5);
+<span class="d_keyword">assert</span>(a.empty);
+
+a ~= 1;
+a ~= [2, 3];
+<span class="d_keyword">assert</span>(equal(a, [1, 2, 3]));
+
+<span class="d_comment">// append an input range
+</span>a ~= a2;
+<span class="d_keyword">assert</span>(equal(a, [1, 2, 3, 4, 5]));
+a2.front = 0;
+<span class="d_keyword">assert</span>(equal(a, [1, 2, 3, 4, 5]));
+</pre>
+</div></div>
+
+</dd>
+</dl>
+</dd>
+</dl>
+
+        <div class="smallprint" id="copyright">Copyright &copy; 1999-2018 by the <a href="foundation_overview.html">D Language Foundation</a> | Page generated by
+<a href="spec/ddoc.html">Ddoc</a> on Thu May  3 12:49:00 2018
+</div>
+    </div>
+</div>
+
+    <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
+    <script type="text/javascript">window.jQuery || document.write('\x3Cscript src="js/jquery-1.7.2.min.js">\x3C/script>');</script>
+    <script type="text/javascript" src="js/dlang.js"></script>
+    
+    <script type="text/javascript" src="js/codemirror-compressed.js"></script>
+    <script type="text/javascript" src="js/run.js"></script>
+    <script type="text/javascript" src="js/run_examples.js"></script>
+
+<script type="text/javascript" src="js/listanchors.js"></script>
+<script type="text/javascript">jQuery(document).ready(listanchors);</script>
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.2.0/css/font-awesome.min.css">
+</body>
+</html>
