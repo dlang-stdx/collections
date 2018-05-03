@@ -1,3 +1,4 @@
+///
 module stdx.collections.array;
 
 import stdx.collections.common;
@@ -14,6 +15,7 @@ version(unittest)
     private alias SCAlloc = StatsCollector!(Mallocator, Options.bytesUsed);
 }
 
+///
 struct Array(T)
 {
     import std.experimental.allocator : RCIAllocator, RCISharedAllocator,

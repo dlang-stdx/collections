@@ -1,3 +1,4 @@
+///
 module stdx.collections.hashtable;
 
 import stdx.collections.common;
@@ -14,6 +15,7 @@ version(unittest)
     private alias SCAlloc = StatsCollector!(Mallocator, Options.bytesUsed);
 }
 
+///
 struct Hashtable(K, V)
 {
     import std.experimental.allocator : RCIAllocator, RCISharedAllocator;
