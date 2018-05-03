@@ -5,124 +5,503 @@ module stdx.collections.common;
 import std.range: isInputRange;
 
 auto tail(Collection)(Collection collection)
-    if (isInputRange!Collection)
+if (isInputRange!Collection)
 {
     collection.popFront();
     return collection;
 }
 
-struct Mutable(T)
+package static auto threadAllocatorObject()
 {
-    import std.experimental.allocator : IAllocator, theAllocator, dispose;
+    import std.experimental.allocator : RCIAllocator;
+
+    static @nogc nothrow
+    RCIAllocator wrapAllocatorObject()
+    {
+        import std.experimental.allocator.gc_allocator : GCAllocator;
+        import std.experimental.allocator : allocatorObject;
+
+        return allocatorObject(GCAllocator.instance);
+    }
+    auto fn = (() @trusted =>
+            cast(RCIAllocator function() @nogc nothrow pure @safe)(&wrapAllocatorObject))();
+    return fn();
+}
+
+package static auto processAllocatorObject()
+{
+    import std.experimental.allocator : RCISharedAllocator;
+
+    static @nogc nothrow
+    RCISharedAllocator wrapAllocatorObject()
+    {
+        import std.experimental.allocator.gc_allocator : GCAllocator;
+        import std.experimental.allocator : sharedAllocatorObject;
+
+        return sharedAllocatorObject(GCAllocator.instance);
+    }
+    auto fn = (() @trusted =>
+            cast(RCISharedAllocator function() @nogc nothrow pure @safe)(&wrapAllocatorObject))();
+    return fn();
+}
+
+package struct AllocatorHandler
+{
+    import std.experimental.allocator : RCIAllocator, RCISharedAllocator,
+           dispose, stateSize, theAllocator, processAllocator;
     import std.experimental.allocator.building_blocks.affix_allocator;
+    import std.conv : emplace;
     import core.atomic : atomicOp;
+    import std.algorithm.mutation : move;
+    debug(AllocatorHandler) import std.stdio;
 
-    private struct RefCountedMutable
+    private union
     {
-        IAllocator _alloc;
-        T _payload;
-        size_t _rc;
+        void *_;
+        size_t _pMeta;
     }
 
-    private void[] _mutableSupport;
-    private AffixAllocator!(IAllocator, RefCountedMutable) _mutableAllocator;
+    alias LocalAllocT = AffixAllocator!(RCIAllocator, size_t);
+    alias SharedAllocT = shared AffixAllocator!(RCISharedAllocator, size_t);
 
-    this(this _)(T theMutable)
+    private static struct Metadata
     {
-        this(theAllocator, theMutable);
-    }
-
-    this(this _)(IAllocator alloc, T theMutable)
-    {
-        auto t = AffixAllocator!(IAllocator, RefCountedMutable)(alloc);
-        auto tSupport = (() @trusted => t.allocate(1))();
-        () @trusted {
-            t.prefix(tSupport)._alloc = alloc;
-            t.prefix(tSupport)._payload = theMutable;
-        }();
-        _mutableSupport = (() @trusted => cast(typeof(_mutableSupport))(tSupport))();
-        _mutableAllocator = (() @trusted => cast(typeof(_mutableAllocator))(t))();
-    }
-
-    this(this) @trusted
-    {
-        if (_mutableSupport !is null)
+        union LAllocator
         {
-            addRef(_mutableAllocator, _mutableSupport);
+            LocalAllocT alloc;
         }
+        union SAllocator
+        {
+            SharedAllocT alloc;
+        }
+
+        LAllocator _localAlloc;
+        SAllocator _sharedAlloc;
+        bool _isShared;
+        size_t _rc = 1;
     }
 
-    @trusted void addRef(AllocQual, SupportQual, this Qualified)(AllocQual alloc, SupportQual support)
+    pragma(inline, true)
+    pure nothrow @trusted @nogc
+    bool isNull() const
     {
-        assert(support !is null);
-        static if (is(Qualified == immutable) || is(Qualified == const))
+        return (cast(void*) _pMeta) is null;
+    }
+
+    pragma(inline, true)
+    pure nothrow @safe @nogc
+    bool isShared() const
+    {
+        return isSharedMeta(_pMeta);
+    }
+
+    nothrow pure @trusted
+    this(A, this Q)(A alloc)
+    if (!is(Q == shared)
+        && (is(A == RCISharedAllocator) || !is(Q == immutable))
+        && (is(A == RCIAllocator) || is(A == RCISharedAllocator)))
+    {
+        //assert(alloc.alignment >= Metadata.alignof);
+
+        // Allocate mem for metadata
+        //auto state = alloc.allocate(stateSize!Metadata);
+
+        auto dg = cast(void[] delegate(size_t, TypeInfo) nothrow pure)(&alloc.allocate);
+        auto state = dg(stateSize!Metadata, null);
+        assert(state !is null);
+
+        auto meta = emplace!Metadata(state);
+        assert(state.ptr == meta);
+        assert(meta._rc == 1);
+
+        static if (is(A == RCISharedAllocator))
         {
-            auto p = cast(shared uint*)(&alloc.prefix(support)._rc);
-            atomicOp!"+="(*p, 1);
+            auto shAlloc = SharedAllocT(alloc);
+            auto sz = stateSize!SharedAllocT;
+            (cast(void*) &meta._sharedAlloc.alloc)[0 .. sz] = (cast(void*) &shAlloc)[0 .. sz];
+            meta._isShared = true;
+            SharedAllocT init;
+            (cast(void*) &shAlloc)[0 .. sz] = (cast(void*) &init)[0 .. sz];
         }
         else
         {
-            ++alloc.prefix(support)._rc;
+            auto lcAlloc = LocalAllocT(alloc);
+            move(lcAlloc, meta._localAlloc.alloc);
         }
+        _pMeta = cast(size_t) state.ptr;
     }
 
-    ~this() @trusted
+    pure nothrow @safe @nogc
+    //this(this Q)(ref Q rhs)
+    this(const ref typeof(this) rhs)
     {
-        if (_mutableSupport !is null)
+        assert((() @trusted => (cast(void*) _pMeta) is null)());
+        _pMeta = rhs._pMeta;
+        incRef(_pMeta);
+    }
+
+    pure nothrow @safe /*@nogc*/
+    ref typeof(this) opAssign(const ref typeof(this) rhs)
+    {
+        debug(AllocatorHandler)
         {
-            if (_mutableAllocator.prefix(_mutableSupport)._rc == 0)
-            {
-                auto origAlloc = _mutableAllocator.prefix(_mutableSupport)._alloc;
-                auto disposer = AffixAllocator!(IAllocator, RefCountedMutable)(origAlloc);
-                disposer.dispose(_mutableSupport);
-            }
-            else
-            {
-                --_mutableAllocator.prefix(_mutableSupport)._rc;
-            }
+            writefln("AllocatorHandler.opAssign: begin");
+            scope(exit) writefln("AllocatorHandler.opAssign: end");
         }
-    }
 
-    auto ref opAssign()(auto ref typeof(this) rhs)
-    {
-        if (rhs._mutableSupport !is null
-            && _mutableSupport is rhs._mutableSupport)
+        auto pMeta = (() @trusted => cast(void*) _pMeta)();
+        auto rhspMeta = (() @trusted => cast(void*) rhs._pMeta)();
+        if (rhspMeta !is null && _pMeta == rhs._pMeta)
         {
             return this;
         }
-        if (rhs._mutableSupport !is null)
+        if (rhspMeta !is null)
         {
-            //() @trusted {
-                //++rhs._mutableAllocator.prefix(rhs._mutableSupport)._rc;
-            //}();
-            addRef(rhs._mutableAllocator, rhs._mutableSupport);
+            rhs.incRef(rhs._pMeta);
+            debug(AllocatorHandler) writefln(
+                    "AllocatorHandler.opAssign: AllocatorHandler %s has refcount: %s",
+                    &this, rhs.getRC);
         }
-        __dtor();
-        _mutableSupport = rhs._mutableSupport;
-        _mutableAllocator = rhs._mutableAllocator;
+        if (pMeta) decRef(_pMeta);
+        _pMeta = rhs._pMeta;
         return this;
     }
 
-    bool isNull(this _)()
+    pure nothrow @safe @nogc
+    void bootstrap(this Q)()
     {
-        return _mutableSupport is null;
+        assert((() @trusted => cast(void*) _pMeta)());
+        incRef(_pMeta);
     }
 
-    auto ref get(this Q)()
+    pure nothrow @safe /*@nogc*/
+    ~this()
     {
-        static if (is(Q == immutable) || is(Q == const))
+        auto pMeta = (() @trusted => cast(void*) _pMeta)();
+        if (pMeta is null)
         {
-            alias PayloadType = typeof(_mutableAllocator.prefix(_mutableSupport)._payload);
-            return cast(shared PayloadType)(_mutableAllocator.prefix(_mutableSupport)._payload);
+            debug(AllocatorHandler) writeln("META IS NULL");
+            return;
+        }
+        decRef(_pMeta);
+    }
+
+    //debug(AllocatorHandler)
+    pragma(inline, true)
+    private pure nothrow @trusted @nogc
+    size_t getRC(this _)()
+    {
+        auto meta = cast(Metadata*) _pMeta;
+        return meta._rc;
+    }
+
+    pragma(inline, true)
+    static private pure nothrow @trusted @nogc
+    bool isSharedMeta(const size_t pMeta)
+    {
+        assert(cast(void*) pMeta);
+        auto meta = cast(Metadata*) pMeta;
+        return meta._isShared;
+    }
+
+    pragma(inline, true)
+    static private pure nothrow @trusted @nogc
+    ref auto localAllocator(const size_t pMeta)
+    {
+        assert(cast(void*) pMeta);
+        auto meta = cast(Metadata*) pMeta;
+        assert(!meta._isShared);
+        return meta._localAlloc.alloc;
+    }
+
+    pragma(inline, true)
+    static private pure nothrow @trusted @nogc
+    ref auto sharedAllocator(const size_t pMeta)
+    {
+        assert(cast(void*) pMeta);
+        auto meta = cast(Metadata*) pMeta;
+        assert(meta._isShared);
+        return meta._sharedAlloc.alloc;
+    }
+
+    static private @nogc nothrow pure @trusted
+    void incRef(const size_t pMeta)
+    {
+        auto tmeta = cast(Metadata*) pMeta;
+        if (tmeta._isShared)
+        {
+            auto meta = cast(shared Metadata*) pMeta;
+            atomicOp!"+="(meta._rc, 1);
         }
         else
         {
-            return _mutableAllocator.prefix(_mutableSupport)._payload;
+            auto meta = cast(Metadata*) pMeta;
+            ++meta._rc;
         }
     }
 
-    void set(T v)
+    static private @nogc nothrow pure @trusted
+    void decRef(const size_t pMeta)
     {
-        _mutableAllocator.prefix(_mutableSupport)._payload = v;
+        auto tmeta = cast(Metadata*) pMeta;
+        void[] origState = (cast(void*) tmeta)[0 .. stateSize!Metadata];
+
+        if (tmeta._isShared)
+        {
+            auto meta = cast(shared Metadata*) pMeta;
+            debug(AllocatorHandler) writeln("is shared");
+            if (atomicOp!"-="(meta._rc, 1) == 0)
+            {
+                debug(AllocatorHandler) writeln("Here 2");
+                SharedAllocT a;
+                // Bitblast the allocator on the stack copy; this will ensure that the
+                // dtor inside the union will be called
+                // Workaround for move
+                auto sz = stateSize!SharedAllocT;
+                (cast(void*) &a)[0 .. sz] = (cast(void*) &meta._sharedAlloc.alloc)[0 .. sz];
+                SharedAllocT init;
+                (cast(void*) &meta._sharedAlloc.alloc)[0 .. sz] = (cast(void*) &init)[0 .. sz];
+                //a.parent.deallocate(origState);
+                (cast(bool delegate(void[]) @nogc nothrow pure)(&a.parent.deallocate))(origState);
+            }
+        }
+        else
+        {
+            debug(AllocatorHandler) writeln("is not shared");
+            auto meta = cast(Metadata*) pMeta;
+            if (--meta._rc == 0)
+            {
+                debug(AllocatorHandler) writeln("Here 3");
+                LocalAllocT a;
+                move(meta._localAlloc.alloc, a);
+                //assert(meta._localAlloc.alloc == LocalAllocT.init);
+                //a.parent.deallocate(origState);
+                (cast(bool delegate(void[]) @nogc nothrow pure)(&a.parent.deallocate))(origState);
+            }
+        }
     }
+
+nothrow:
+
+    pure @trusted
+    void[] allocate(size_t n) const
+    {
+        return (cast(void[] delegate(size_t) const nothrow pure)(&_allocate))(n);
+    }
+
+    void[] _allocate(size_t n) const
+    {
+        assert(cast(void*) _pMeta);
+        return isSharedMeta(_pMeta) ?
+            sharedAllocator(_pMeta).allocate(n) :
+            localAllocator(_pMeta).allocate(n);
+    }
+
+    pure @trusted
+    bool expand(ref void[] b, size_t delta) const
+    {
+        return (cast(bool delegate(ref void[], size_t) const nothrow pure)(&_expand))(b, delta);
+    }
+
+    bool _expand(ref void[] b, size_t delta) const
+    {
+        assert(cast(void*) _pMeta);
+        return isSharedMeta(_pMeta) ?
+            sharedAllocator(_pMeta).expand(b, delta) :
+            localAllocator(_pMeta).expand(b, delta);
+    }
+
+    pure
+    bool deallocate(void[] b) const
+    {
+        return (cast(bool delegate(void[]) const nothrow pure)(&_deallocate))(b);
+    }
+
+    bool _deallocate(void[] b) const
+    {
+        assert(cast(void*) _pMeta);
+        return isSharedMeta(_pMeta) ?
+            sharedAllocator(_pMeta).deallocate(b) :
+            localAllocator(_pMeta).deallocate(b);
+    }
+
+    @nogc nothrow pure @trusted
+    private size_t prefix(T)(const T[] b) const
+    {
+        assert(cast(void*) _pMeta);
+        return isSharedMeta(_pMeta) ?
+            cast(size_t)&sharedAllocator(_pMeta).prefix(b) :
+            cast(size_t)&localAllocator(_pMeta).prefix(b);
+    }
+
+    @nogc nothrow pure @trusted
+    size_t opPrefix(string op, T)(const T[] support, size_t val) const
+    if ((op == "+=") || (op == "-="))
+    {
+        assert(cast(void*) _pMeta);
+        if (isSharedMeta(_pMeta))
+        {
+            return cast(size_t)(atomicOp!op(*cast(shared size_t *)prefix(support), val));
+        }
+        else
+        {
+            mixin("return cast(size_t)(*cast(size_t *)prefix(support)" ~ op ~ "val);");
+        }
+    }
+
+    @nogc nothrow pure @trusted
+    size_t opCmpPrefix(string op, T)(const T[] support, size_t val) const
+    if ((op == "==") || (op == "<=") || (op == "<") || (op == ">=") || (op == ">"))
+    {
+        assert(cast(void*) _pMeta);
+        if (isSharedMeta(_pMeta))
+        {
+            return cast(size_t)(atomicOp!op(*cast(shared size_t *)prefix(support), val));
+        }
+        else
+        {
+            mixin("return cast(size_t)(*cast(size_t *)prefix(support)" ~ op ~ "val);");
+        }
+    }
+
+    /*@nogc*/ nothrow pure @safe
+    AllocatorHandler getSharedAlloc() const
+    {
+        if (isNull || !isShared)
+        {
+            return AllocatorHandler(processAllocatorObject());
+        }
+        return AllocatorHandler(this);
+    }
+
+    @nogc nothrow pure @safe
+    RCIAllocator getLocalAlloc() const
+    {
+        if (isNull || isShared)
+        {
+            return threadAllocatorObject();
+        }
+        return localAllocator(_pMeta).parent;
+    }
+}
+
+version(unittest)
+{
+    // Structs used to test the type system inference
+    package static struct Unsafe
+    {
+        int _x;
+        @system this(int x) {}
+    }
+
+    package static struct UnsafeDtor
+    {
+        int _x;
+        @nogc nothrow pure @safe this(int x) {}
+        @system ~this() {}
+    }
+
+    package static struct Impure
+    {
+        import std.experimental.allocator : RCIAllocator, theAllocator;
+        RCIAllocator _a;
+        @safe this(int id) { _a = theAllocator; }
+    }
+
+    package static struct ImpureDtor
+    {
+        import std.experimental.allocator : RCIAllocator, theAllocator;
+        RCIAllocator _a;
+        @nogc nothrow pure @safe this(int x) {}
+        @safe ~this() { _a = theAllocator; }
+    }
+
+    package static struct Throws
+    {
+        import std.exception : enforce;
+        int _x;
+        this(int id) { enforce(id > 0); }
+    }
+
+    package static struct ThrowsDtor
+    {
+        import std.exception : enforce;
+        int _x;
+        @nogc nothrow pure @safe this(int x) {}
+        ~this() { enforce(_x > 0); }
+    }
+}
+
+unittest
+{
+    import std.experimental.allocator.mallocator;
+    import std.experimental.allocator.building_blocks.stats_collector;
+    import std.experimental.allocator : RCIAllocator, RCISharedAllocator,
+           allocatorObject, sharedAllocatorObject, processAllocator, theAllocator;
+    import std.conv : to;
+    import std.stdio;
+    import std.traits;
+
+    struct MyA(A)
+    {
+        A a;
+        alias a this;
+
+        pure nothrow @nogc
+        bool deallocate(void[] b)
+        {
+            return (cast(bool delegate(void[]) pure nothrow @nogc)(&a.deallocate))(b);
+        }
+
+        bool forceAttDealloc(void[] b)
+        {
+            return a.deallocate(b);
+        }
+    }
+
+    //alias SCAlloc = MyA!(StatsCollector!(Mallocator, Options.bytesUsed));
+    alias SCAlloc = StatsCollector!(Mallocator, Options.bytesUsed);
+    SCAlloc statsCollectorAlloc;
+    size_t bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0);
+    {
+        auto _allocator = allocatorObject(&statsCollectorAlloc);
+        auto sca = AllocatorHandler(_allocator);
+        auto buf = sca.allocate(10);
+        assert(buf.length == 10);
+
+        auto t = cast(size_t*)(sca.prefix(buf));
+        assert(*t == 0);
+        *t += 1;
+        assert(*t == *cast(size_t*)sca.prefix(buf));
+        sca.deallocate(buf);
+    }
+    bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "MutableDualAlloc ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
+
+    // Test immutable allocator
+    auto ia = immutable AllocatorHandler(processAllocator);
+    auto buf = ia.allocate(10);
+    assert(buf.length == 10);
+    ia.deallocate(buf);
+
+    static assert(!__traits(compiles, { auto ia2 = immutable AllocatorHandler(theAllocator); }));
+    auto ca = const AllocatorHandler(theAllocator);
+}
+
+unittest
+{
+    import std.experimental.allocator : RCIAllocator, RCISharedAllocator,
+           allocatorObject, sharedAllocatorObject, processAllocator, theAllocator;
+    import std.stdio;
+
+    auto sca = immutable AllocatorHandler(processAllocator);
+    auto buf = sca.allocate(10);
+    assert(buf.length == 10);
+    sca.deallocate(buf);
+
+    auto al = sca.getSharedAlloc;
+    AllocatorHandler al2 = al.getSharedAlloc;
+    assert(al._pMeta == al2._pMeta);
 }

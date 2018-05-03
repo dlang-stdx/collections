@@ -6,7 +6,7 @@ d:
     - ldc
 matrix:
   include:
-    - d: dmd
+    - d: dmd-nightly
       script:
         - dub test --compiler=$DC --build=unittest-cov
         #- dub build -b ddox

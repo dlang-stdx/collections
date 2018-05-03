@@ -1,4 +1,3 @@
-///
 module stdx.collections.array;
 
 import stdx.collections.common;
@@ -9,101 +8,63 @@ version(unittest)
 {
     import std.experimental.allocator.mallocator;
     import std.experimental.allocator.building_blocks.stats_collector;
-    import std.experimental.allocator : IAllocator, allocatorObject;
+    import std.experimental.allocator : RCIAllocator, RCISharedAllocator,
+           allocatorObject, sharedAllocatorObject;
 
     private alias SCAlloc = StatsCollector!(Mallocator, Options.bytesUsed);
 }
 
 struct Array(T)
 {
-    import std.experimental.allocator : IAllocator, theAllocator, make, dispose;
+    import std.experimental.allocator : RCIAllocator, RCISharedAllocator,
+           make, dispose, stateSize;
     import std.experimental.allocator.building_blocks.affix_allocator;
     import std.traits : isImplicitlyConvertible, Unqual, isArray;
-    import std.range.primitives : isInputRange, isInfinite,
-           ElementType, hasLength;
+    import std.range.primitives : isInputRange, isInfinite, ElementType, hasLength;
     import std.conv : emplace;
     import core.atomic : atomicOp;
+    import std.algorithm.mutation : move;
 
-//private:
+private:
     T[] _payload;
     Unqual!T[] _support;
 
     static enum double capacityFactor = 3.0 / 2;
     static enum initCapacity = 3;
 
-    alias MutableAlloc = AffixAllocator!(IAllocator, size_t);
-    Mutable!MutableAlloc _ouroborosAllocator;
-
-    /// Returns the actual allocator from ouroboros
-    @trusted ref auto allocator(this _)()
-    {
-        assert(!_ouroborosAllocator.isNull);
-        return _ouroborosAllocator.get();
-    }
+    AllocatorHandler _allocator;
 
     /// Constructs the ouroboros allocator from allocator if the ouroboros
-    //allocator wasn't previously set
-    @trusted bool setAllocator(IAllocator allocator)
+    // allocator wasn't previously set
+    /*@nogc*/ nothrow pure @safe
+    bool setAllocator(A)(ref A allocator)
+    if (is(A == RCIAllocator) || is(A == RCISharedAllocator))
     {
-        if (_ouroborosAllocator.isNull)
+        if (_allocator.isNull)
         {
-            _ouroborosAllocator = Mutable!(MutableAlloc)(allocator,
-                    MutableAlloc(allocator));
+            auto a = typeof(_allocator)(allocator);
+            move(a, _allocator);
             return true;
         }
         return false;
     }
 
-    @trusted IAllocator getAllocator(this _)()
-    {
-        return _ouroborosAllocator.isNull ? null : allocator().parent;
-    }
-
-    @trusted void addRef(SupportQual, this Qualified)(SupportQual support)
+    @nogc nothrow pure @trusted
+    void addRef(SupportQual, this Q)(SupportQual support)
     {
         assert(support !is null);
-        debug(CollectionArray)
-        {
-            writefln("Array.addRef: Array %s has refcount: %s; will be: %s",
-                    support, *prefCount(support), *prefCount(support) + 1);
-        }
-        static if (is(Qualified == immutable) || is(Qualified == const))
-        {
-            atomicOp!"+="(*prefCount(support), 1);
-        }
-        else
-        {
-            ++*prefCount(support);
-        }
+        cast(void) _allocator.opPrefix!("+=")(support, 1);
     }
 
-    @trusted void delRef(Unqual!T[] support)
+    void delRef(Unqual!T[] support)
     {
-        assert(support !is null);
-        size_t *pref = prefCount(support);
-        debug(CollectionArray) writefln("Array.delRef: Array %s has refcount: %s; will be: %s",
-                support, *pref, *pref - 1);
-        if (*pref == 0)
-        {
-            debug(CollectionArray) writefln("Array.delRef: Deleting array %s", support);
-            allocator.dispose(support);
-        }
-        else
-        {
-            --*pref;
-        }
-    }
+        // Will be optimized away, but the type sistem infers T's safety
+        if (0) { T t = T.init; }
 
-    @trusted auto prefCount(SupportQual, this Qualified)(SupportQual support)
-    {
         assert(support !is null);
-        static if (is(Qualified == immutable) || is(Qualified == const))
+        if (_allocator.opPrefix!("-=")(support, 1) == 0)
         {
-            return cast(shared size_t*)(&allocator.prefix(support));
-        }
-        else
-        {
-            return cast(size_t*)(&allocator.prefix(support));
+            () @trusted { dispose(_allocator, support); }();
         }
     }
 
@@ -123,30 +84,26 @@ struct Array(T)
 
         return ""
         ~ stuffLengthStr
-        ~"auto tmpAlloc = Mutable!(MutableAlloc)(allocator, MutableAlloc(allocator));"
-        ~"_ouroborosAllocator = (() @trusted => cast(immutable)(tmpAlloc))();"
-        ~"auto tmpSupport = cast(Unqual!T[])(tmpAlloc.get().allocate(stuffLength * T.sizeof));"
+        ~"_allocator = immutable AllocatorHandler(allocator);"
+        ~"auto tmpSupport = (() @trusted => cast(Unqual!T[])(_allocator.allocate(stuffLength * T.sizeof)))();"
         ~"assert(stuffLength == 0 || (stuffLength > 0 && tmpSupport !is
         null));"
-        ~"for (size_t i = 0; i < tmpSupport.length; ++i)"
-        ~"{"
-                ~"emplace(&tmpSupport[i]);"
-        ~"}"
         ~"size_t i = 0;"
         ~"foreach (item; " ~ stuff ~ ")"
         ~"{"
-            ~"tmpSupport[i++] = item;"
+            ~"(() @trusted => emplace(&tmpSupport[i++], item))();"
         ~"}"
-        ~"_support = cast(typeof(_support))(tmpSupport);"
-        ~"_payload = cast(T[])(_support[0 .. stuffLength]);";
+        ~"_support = (() @trusted => cast(typeof(_support))(tmpSupport))();"
+        ~"_payload = (() @trusted => cast(typeof(_payload))(_support[0 .. stuffLength]))();"
+        ~"if (_support) addRef(_support);";
     }
 
     void destroyUnused()
     {
         debug(CollectionArray)
         {
-            writefln("Array.destoryUnused: begin");
-            scope(exit) writefln("Array.destoryUnused: end");
+            writefln("Array.destroyUnused: begin");
+            scope(exit) writefln("Array.destroyUnused: end");
         }
         if (_support !is null)
         {
@@ -155,34 +112,124 @@ struct Array(T)
     }
 
 public:
-    this(this _)(IAllocator allocator)
+    /**
+     * Constructs a qualified array that will use the provided
+     * allocator object. For `immutable` objects, a `RCISharedAllocator` must
+     * be supplied.
+     *
+     * Params:
+     *      allocator = a $(REF RCIAllocator, std,experimental,allocator) or
+     *                  $(REF RCISharedAllocator, std,experimental,allocator)
+     *                  allocator object
+     *
+     * Complexity: $(BIGOH 1)
+     */
+    this(A, this Q)(A allocator)
+    if (!is(Q == shared)
+        && (is(A == RCISharedAllocator) || !is(Q == immutable))
+        && (is(A == RCIAllocator) || is(A == RCISharedAllocator)))
     {
         debug(CollectionArray)
         {
             writefln("Array.ctor: begin");
             scope(exit) writefln("Array.ctor: end");
         }
-        setAllocator(allocator);
+        static if (is(Q == immutable) || is(Q == const))
+        {
+            T[] empty;
+            this(allocator, empty);
+        }
+        else
+        {
+            setAllocator(allocator);
+        }
     }
 
-    this(U, this Qualified)(U[] values...)
+    ///
+    @safe unittest
+    {
+        import std.experimental.allocator : theAllocator, processAllocator;
+
+        auto a = Array!int(theAllocator);
+        auto ca = const Array!int(processAllocator);
+        auto ia = immutable Array!int(processAllocator);
+    }
+
+    /**
+     * Constructs a qualified array out of a number of items.
+     * Because no allocator was provided, the array will use the
+     * $(REF, GCAllocator, std,experimental,allocator,gc_allocator).
+     *
+     * Params:
+     *      values = a variable number of items, either in the form of a
+     *               list or as a built-in array
+     *
+     * Complexity: $(BIGOH m), where `m` is the number of items.
+     */
+    this(U, this Q)(U[] values...)
     if (isImplicitlyConvertible!(U, T))
     {
-        this(theAllocator, values);
+        static if (is(Q == immutable) || is(Q == const))
+        {
+            this(processAllocatorObject(), values);
+        }
+        else
+        {
+            this(threadAllocatorObject(), values);
+        }
     }
 
-    this(U, this Qualified)(IAllocator allocator, U[] values...)
-    if (isImplicitlyConvertible!(U, T))
+    ///
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+
+        // Create a list from a list of ints
+        {
+            auto a = Array!int(1, 2, 3);
+            assert(equal(a, [1, 2, 3]));
+        }
+        // Create a list from an array of ints
+        {
+            auto a = Array!int([1, 2, 3]);
+            assert(equal(a, [1, 2, 3]));
+        }
+        // Create a list from a list from an input range
+        {
+            auto a = Array!int(1, 2, 3);
+            auto a2 = Array!int(a);
+            assert(equal(a2, [1, 2, 3]));
+        }
+    }
+
+    /**
+     * Constructs a qualified array out of a number of items
+     * that will use the provided allocator object.
+     * For `immutable` objects, a `RCISharedAllocator` must be supplied.
+     *
+     * Params:
+     *      allocator = a $(REF RCIAllocator, std,experimental,allocator) or
+     *                  $(REF RCISharedAllocator, std,experimental,allocator)
+     *                  allocator object
+     *      values = a variable number of items, either in the form of a
+     *               list or as a built-in array
+     *
+     * Complexity: $(BIGOH m), where `m` is the number of items.
+     */
+    this(A, U, this Q)(A allocator, U[] values...)
+    if (!is(Q == shared)
+        && (is(A == RCISharedAllocator) || !is(Q == immutable))
+        && (is(A == RCIAllocator) || is(A == RCISharedAllocator))
+        && isImplicitlyConvertible!(U, T))
     {
         debug(CollectionArray)
         {
             writefln("Array.ctor: begin");
             scope(exit) writefln("Array.ctor: end");
         }
-        static if (is(Qualified == immutable) || is(Qualified == const))
+        static if (is(Q == immutable) || is(Q == const))
         {
             mixin(immutableInsert!(typeof(values))("values"));
-            assert(!_ouroborosAllocator.isNull);
         }
         else
         {
@@ -191,16 +238,57 @@ public:
         }
     }
 
-    this(Stuff, this Qualified)(Stuff stuff)
+    /**
+     * Constructs a qualified array out of an
+     * $(REF_ALTTEXT input range, isInputRange, std,range,primitives).
+     * Because no allocator was provided, the array will use the
+     * $(REF, GCAllocator, std,experimental,allocator,gc_allocator).
+     * If `Stuff` defines `length`, `Array` will use it to reserve the
+     * necessary amount of memory.
+     *
+     * Params:
+     *      stuff = an input range of elements that are implitictly convertible
+     *              to `T`
+     *
+     * Complexity: $(BIGOH m), where `m` is the number of elements in the range.
+     */
+    this(Stuff, this Q)(Stuff stuff)
     if (isInputRange!Stuff && !isInfinite!Stuff
         && isImplicitlyConvertible!(ElementType!Stuff, T)
         && !is(Stuff == T[]))
     {
-        this(theAllocator, stuff);
+        static if (is(Q == immutable) || is(Q == const))
+        {
+            this(processAllocatorObject(), stuff);
+        }
+        else
+        {
+            this(threadAllocatorObject(), stuff);
+        }
     }
 
-    this(Stuff, this Qualified)(IAllocator allocator, Stuff stuff)
-    if (isInputRange!Stuff && !isInfinite!Stuff
+    /**
+     * Constructs a qualified array out of an
+     * $(REF_ALTTEXT input range, isInputRange, std,range,primitives)
+     * that will use the provided allocator object.
+     * For `immutable` objects, a `RCISharedAllocator` must be supplied.
+     * If `Stuff` defines `length`, `Array` will use it to reserve the
+     * necessary amount of memory.
+     *
+     * Params:
+     *      allocator = a $(REF RCIAllocator, std,experimental,allocator) or
+     *                  $(REF RCISharedAllocator, std,experimental,allocator)
+     *                  allocator object
+     *      stuff = an input range of elements that are implitictly convertible
+     *              to `T`
+     *
+     * Complexity: $(BIGOH m), where `m` is the number of elements in the range.
+     */
+    this(A, Stuff, this Q)(A allocator, Stuff stuff)
+    if (!is(Q == shared)
+        && (is(A == RCISharedAllocator) || !is(Q == immutable))
+        && (is(A == RCIAllocator) || is(A == RCISharedAllocator))
+        && isInputRange!Stuff
         && isImplicitlyConvertible!(ElementType!Stuff, T)
         && !is(Stuff == T[]))
     {
@@ -209,10 +297,9 @@ public:
             writefln("Array.ctor: begin");
             scope(exit) writefln("Array.ctor: end");
         }
-        static if (is(Qualified == immutable) || is(Qualified == const))
+        static if (is(Q == immutable) || is(Q == const))
         {
             mixin(immutableInsert!(typeof(stuff))("stuff"));
-            assert(!_ouroborosAllocator.isNull);
         }
         else
         {
@@ -228,6 +315,7 @@ public:
             writefln("Array.postblit: begin");
             scope(exit) writefln("Array.postblit: end");
         }
+        _allocator.bootstrap();
         if (_support !is null)
         {
             addRef(_support);
@@ -237,14 +325,17 @@ public:
     }
 
     // Immutable ctors
-    private this(SuppQual, PaylQual, OuroQual, this Qualified)(SuppQual support,
-            PaylQual payload, OuroQual ouroborosAllocator)
-        //if (is(typeof(_support) : typeof(support))
-            //&& (is(Qualified == immutable) || is(Qualified == const)))
+    // Very important to pass the allocator by ref! (Related to postblit bug)
+    private this(SuppQual, PaylQual, AllocQual, this Qualified)(SuppQual support,
+            PaylQual payload, ref AllocQual _newAllocator)
+        if (is(typeof(_support) : typeof(support)))
     {
         _support = support;
         _payload = payload;
-        _ouroborosAllocator = ouroborosAllocator;
+        // Needs a bootstrap
+        // bootstrap is the equivalent of incRef
+        _newAllocator.bootstrap();
+        _allocator = _newAllocator;
         if (_support !is null)
         {
             addRef(_support);
@@ -253,7 +344,7 @@ public:
         }
     }
 
-    @trusted ~this()
+    ~this()
     {
         debug(CollectionArray)
         {
@@ -265,34 +356,120 @@ public:
         destroyUnused();
     }
 
-    private @trusted size_t slackFront() const
+    nothrow pure @safe unittest
+    {
+        auto a = Array!int(1, 2, 3);
+
+        // Infer safety
+        static assert(!__traits(compiles, () @safe { Array!Unsafe(Unsafe(1)); }));
+        static assert(!__traits(compiles, () @safe { auto a = const Array!Unsafe(Unsafe(1)); }));
+        static assert(!__traits(compiles, () @safe { auto a = immutable Array!Unsafe(Unsafe(1)); }));
+
+        static assert(!__traits(compiles, () @safe { Array!UnsafeDtor(UnsafeDtor(1)); }));
+        static assert(!__traits(compiles, () @safe { auto s = const Array!UnsafeDtor(UnsafeDtor(1)); }));
+        static assert(!__traits(compiles, () @safe { auto s = immutable Array!UnsafeDtor(UnsafeDtor(1)); }));
+
+        // Infer purity
+        static assert(!__traits(compiles, () pure { Array!Impure(Impure(1)); }));
+        static assert(!__traits(compiles, () pure { auto a = const Array!Impure(Impure(1)); }));
+        static assert(!__traits(compiles, () pure { auto a = immutable Array!Impure(Impure(1)); }));
+
+        static assert(!__traits(compiles, () pure { Array!ImpureDtor(ImpureDtor(1)); }));
+        static assert(!__traits(compiles, () pure { auto s = const Array!ImpureDtor(ImpureDtor(1)); }));
+        static assert(!__traits(compiles, () pure { auto s = immutable Array!ImpureDtor(ImpureDtor(1)); }));
+
+        // Infer throwability
+        static assert(!__traits(compiles, () nothrow { Array!Throws(Throws(1)); }));
+        static assert(!__traits(compiles, () nothrow { auto a = const Array!Throws(Throws(1)); }));
+        static assert(!__traits(compiles, () nothrow { auto a = immutable Array!Throws(Throws(1)); }));
+
+        static assert(!__traits(compiles, () nothrow { Array!ThrowsDtor(ThrowsDtor(1)); }));
+        static assert(!__traits(compiles, () nothrow { auto s = const Array!ThrowsDtor(ThrowsDtor(1)); }));
+        static assert(!__traits(compiles, () nothrow { auto s = immutable Array!ThrowsDtor(ThrowsDtor(1)); }));
+    }
+
+    private @nogc nothrow pure @trusted
+    size_t slackFront() const
     {
         return _payload.ptr - _support.ptr;
     }
 
-    private @trusted size_t slackBack() const
+    private @nogc nothrow pure @trusted
+    size_t slackBack() const
     {
         return _support.ptr + _support.length - _payload.ptr - _payload.length;
     }
 
+    /**
+     * Return the number of elements in the array..
+     *
+     * Returns:
+     *      the length of the array.
+     *
+     * Complexity: $(BIGOH 1).
+     */
+    @nogc nothrow pure @safe
     size_t length() const
     {
         return _payload.length;
     }
 
+    /// ditto
+    alias opDollar = length;
+
+    ///
+    @safe unittest
+    {
+        auto a = Array!int(1, 2, 3);
+        assert(a.length == 3);
+        assert(a[$ - 1] == 3);
+    }
+
+    /**
+     * Set the length of the array to `len`. `len` must be less than or equal
+     * to the `capacity` of the array.
+     *
+     * Params:
+     *      len = a positive integer
+     *
+     * Complexity: $(BIGOH 1).
+     */
+    @nogc nothrow pure @trusted
     void forceLength(size_t len)
     {
         assert(len <= capacity);
         _payload = cast(T[])(_support[slackFront .. len]);
     }
 
-    alias opDollar = length;
-
-    @trusted size_t capacity() const
+    /**
+     * Get the available capacity of the `array`; this is equal to `length` of
+     * the array plus the available pre-allocated, free, space.
+     *
+     * Returns:
+     *      a positive integer denoting the capacity.
+     *
+     * Complexity: $(BIGOH 1).
+     */
+    @nogc nothrow pure @safe
+    size_t capacity() const
     {
         return length + slackBack;
     }
 
+    /**
+     * Reserve enough memory from the allocator to store `n` elements.
+     * If the current `capacity` exceeds `n` nothing will happen.
+     * If `n` exceeds the current `capacity`, an attempt to `expand` the
+     * current array is made. If `expand` is successful, all the expanded
+     * elements are default initialized to `T.init`. If the `expand` fails
+     * a new buffer will be allocated, the old elements of the array will be
+     * copied and the new elements will be default initialized to `T.init`.
+     *
+     * Params:
+     *      n = a positive integer
+     *
+     * Complexity: $(BIGOH max(length, n)).
+     */
     void reserve(size_t n)
     {
         debug(CollectionArray)
@@ -300,16 +477,27 @@ public:
             writefln("Array.reserve: begin");
             scope(exit) writefln("Array.reserve: end");
         }
-        setAllocator(theAllocator);
+
+        // Will be optimized away, but the type sistem infers T's safety
+        if (0) { T t = T.init; }
+
+        auto a = threadAllocatorObject();
+        setAllocator(a);
 
         if (n <= capacity) { return; }
-        if (_support && *prefCount(_support) == 0)
+        if (_support && _allocator.opCmpPrefix!"=="(_support, 0))
         {
             void[] buf = _support;
-            if (allocator.expand(buf, (n - capacity) * T.sizeof))
+            if (_allocator.expand(buf, (n - capacity) * T.sizeof))
             {
-                _support = cast(Unqual!T[])(buf);
-                // TODO: emplace extended buf
+                const oldLength = _support.length;
+                _support = (() @trusted => cast(Unqual!T[])(buf))();
+                // Emplace extended buf
+                // TODO: maybe? emplace only if T has indirections
+                foreach (i; oldLength .. _support.length)
+                {
+                    emplace(&_support[i]);
+                }
                 return;
             }
             else
@@ -318,19 +506,61 @@ public:
             }
         }
 
-        auto tmpSupport = cast(Unqual!T[])(allocator.allocate(n * T.sizeof));
+        auto tmpSupport = (() @trusted => cast(Unqual!T[])(_allocator.allocate(n * T.sizeof)))();
         assert(tmpSupport !is null);
         for (size_t i = 0; i < tmpSupport.length; ++i)
         {
+            if (i < _payload.length)
+            {
+                emplace(&tmpSupport[i], _payload[i]);
+            }
+            else
+            {
                 emplace(&tmpSupport[i]);
+            }
         }
-        tmpSupport[0 .. _payload.length] = _payload[];
-        __dtor();
+        //tmpSupport[0 .. _payload.length] = _payload[];
+        destroyUnused();
         _support = tmpSupport;
-        _payload = cast(T[])(_support[0 .. _payload.length]);
+        addRef(_support);
+        _payload = (() @trusted => cast(T[])(_support[0 .. _payload.length]))();
         assert(capacity >= n);
     }
 
+    ///
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+
+        auto stuff = [1, 2, 3];
+        Array!int a;
+        a.reserve(stuff.length);
+        a ~= stuff;
+        assert(equal(a, stuff));
+    }
+
+    /**
+     * Inserts the elements of an
+     * $(REF_ALTTEXT input range, isInputRange, std,range,primitives), or a
+     * variable number of items, at the given `pos`.
+     *
+     * If no allocator was provided when the array was created, the
+     * $(REF, GCAllocator, std,experimental,allocator,gc_allocator) will be used.
+     * If `Stuff` defines `length`, `Array` will use it to reserve the
+     * necessary amount of memory.
+     *
+     * Params:
+     *      pos = a positive integer
+     *      stuff = an input range of elements that are implitictly convertible
+     *              to `T`; a variable number of items either in the form of a
+     *              list or as a built-in array
+     *
+     * Returns:
+     *      the number of elements inserted
+     *
+     * Complexity: $(BIGOH max(length, pos + m)), where `m` is the number of
+     *             elements in the range.
+     */
     size_t insert(Stuff)(size_t pos, Stuff stuff)
     if (!isArray!(typeof(stuff)) && isInputRange!Stuff && !isInfinite!Stuff
         && isImplicitlyConvertible!(ElementType!Stuff, T))
@@ -340,7 +570,12 @@ public:
             writefln("Array.insert: begin");
             scope(exit) writefln("Array.insert: end");
         }
-        setAllocator(theAllocator);
+
+        // Will be optimized away, but the type sistem infers T's safety
+        if (0) { T t = T.init; }
+
+        auto a = threadAllocatorObject();
+        setAllocator(a);
 
         static if (hasLength!Stuff)
         {
@@ -353,7 +588,7 @@ public:
         }
         if (stuffLength == 0) return 0;
 
-        auto tmpSupport = cast(Unqual!T[])(allocator.allocate(stuffLength * T.sizeof));
+        auto tmpSupport = (() @trusted => cast(Unqual!T[])(_allocator.allocate(stuffLength * T.sizeof)))();
         assert(stuffLength == 0 || (stuffLength > 0 && tmpSupport !is null));
         for (size_t i = 0; i < tmpSupport.length; ++i)
         {
@@ -366,10 +601,11 @@ public:
             tmpSupport[i++] = item;
         }
         size_t result = insert(pos, tmpSupport);
-        allocator.dispose(tmpSupport);
+        () @trusted { dispose(_allocator, tmpSupport); }();
         return result;
     }
 
+    /// ditto
     size_t insert(Stuff)(size_t pos, Stuff[] stuff...)
     if (isImplicitlyConvertible!(Stuff, T))
     {
@@ -378,8 +614,13 @@ public:
             writefln("Array.insert: begin");
             scope(exit) writefln("Array.insert: end");
         }
+
+        // Will be optimized away, but the type sistem infers T's safety
+        if (0) { T t = T.init; }
+
         assert(pos <= _payload.length);
-        setAllocator(theAllocator);
+        auto a = threadAllocatorObject();
+        setAllocator(a);
 
         if (stuff.length == 0) return 0;
         if (stuff.length > slackBack)
@@ -389,7 +630,7 @@ public:
             {
                 newCapacity = newCapacity * capacityFactor;
             }
-            reserve(cast(size_t)(newCapacity));
+            reserve((() @trusted => cast(size_t)(newCapacity))());
         }
         //_support[pos + stuff.length .. _payload.length + stuff.length] =
             //_support[pos .. _payload.length];
@@ -400,10 +641,34 @@ public:
             _support[i] = _support[i - stuff.length];
         }
         _support[pos .. pos + stuff.length] = stuff[];
-        _payload = cast(T[])(_support[0 .. _payload.length + stuff.length]);
+        _payload = (() @trusted => cast(T[])(_support[0 .. _payload.length + stuff.length]))();
         return stuff.length;
     }
 
+    ///
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+
+        Array!int a;
+        assert(a.empty);
+
+        size_t pos = 0;
+        pos += a.insert(pos, 1);
+        pos += a.insert(pos, [2, 3]);
+        assert(equal(a, [1, 2, 3]));
+    }
+
+    /**
+     * Check whether there are no more references to this array instance.
+     *
+     * Returns:
+     *      `true` if this is the only reference to this array instance;
+     *      `false` otherwise.
+     *
+     * Complexity: $(BIGOH 1).
+     */
+    @nogc nothrow pure @safe
     bool isUnique(this _)()
     {
         debug(CollectionArray)
@@ -414,22 +679,80 @@ public:
 
         if (_support !is null)
         {
-            return *prefCount(_support) == 0;
+            return cast(bool) _allocator.opCmpPrefix!"=="(_support, 1);
         }
         return true;
     }
 
-    bool empty(this _)()
+    ///
+    @safe unittest
+    {
+        auto a = Array!int(24, 42);
+        assert(a.isUnique);
+        {
+            auto a2 = a;
+            assert(!a.isUnique);
+            a2.front = 0;
+            assert(a.front == 0);
+        } // a2 goes out of scope
+        assert(a.isUnique);
+    }
+
+    /**
+     * Check if the array is empty.
+     *
+     * Returns:
+     *      `true` if there are no elements in the array; `false` otherwise.
+     *
+     * Complexity: $(BIGOH 1).
+     */
+    @nogc nothrow pure @safe
+    bool empty() const
     {
         return length == 0;
     }
 
+    ///
+    @safe unittest
+    {
+        Array!int a;
+        assert(a.empty);
+        size_t pos = 0;
+        a.insert(pos, 1);
+        assert(!a.empty);
+    }
+
+    /**
+     * Provide access to the first element in the array. The user must check
+     * that the array isn't `empty`, prior to calling this function.
+     *
+     * Returns:
+     *      a reference to the first element.
+     *
+     * Complexity: $(BIGOH 1).
+     */
     ref auto front(this _)()
     {
         assert(!empty, "Array.front: Array is empty");
         return _payload[0];
     }
 
+    ///
+    @safe unittest
+    {
+        auto a = Array!int(1, 2, 3);
+        assert(a.front == 1);
+        a.front = 0;
+        assert(a.front == 0);
+    }
+
+    /**
+     * Advance to the next element in the array. The user must check
+     * that the array isn't `empty`, prior to calling this function.
+     *
+     * Complexity: $(BIGOH 1).
+     */
+    @nogc nothrow pure @safe
     void popFront()
     {
         debug(CollectionArray)
@@ -441,6 +764,32 @@ public:
         _payload = _payload[1 .. $];
     }
 
+    ///
+    @safe unittest
+    {
+        auto stuff = [1, 2, 3];
+        auto a = Array!int(stuff);
+        size_t i = 0;
+        while (!a.empty)
+        {
+            assert(a.front == stuff[i++]);
+            a.popFront;
+        }
+        assert(a.empty);
+    }
+
+    /**
+     * Advance to the next element in the array. The user must check
+     * that the array isn't `empty`, prior to calling this function.
+     *
+     * This must be used in order to iterate through a `const` or `immutable`
+     * array For a mutable array this is equivalent to calling `popFront`.
+     *
+     * Returns:
+     *      an array that starts with the next element in the original array.
+     *
+     * Complexity: $(BIGOH 1).
+     */
     Qualified tail(this Qualified)()
     {
         debug(CollectionArray)
@@ -460,6 +809,91 @@ public:
         }
     }
 
+    ///
+    @safe unittest
+    {
+        auto ia = immutable Array!int([1, 2, 3]);
+        assert(ia.tail.front == 2);
+    }
+
+    /**
+     * Eagerly iterate over each element in the array and call `fun` over each
+     * element. This should be used to iterate through `const` and `immutable`
+     * arrays.
+     *
+     * Normally, the entire array is iterated. If partial iteration (early stopping)
+     * is desired, `fun` needs to return a value of type
+     * $(REF Flag, std,typecons)`!"each"` (`Yes.each` to continue iteration, or
+     * `No.each` to stop).
+     *
+     * Params:
+     *      fun = unary function to apply on each element of the array.
+     *
+     * Returns:
+     *      `Yes.each` if it has iterated through all the elements in the array,
+     *      or `No.each` otherwise.
+     *
+     * Complexity: $(BIGOH n).
+     */
+    template each(alias fun)
+    {
+        import std.typecons : Flag, Yes, No;
+        import std.functional : unaryFun;
+        import stdx.collections.slist : SList;
+
+        Flag!"each" each(this Q)()
+        if (is (typeof(unaryFun!fun(T.init))))
+        {
+            alias fn = unaryFun!fun;
+
+            auto sl = SList!(const Array!T)(this);
+            while (!sl.empty && !sl.front.empty)
+            {
+                static if (!is(typeof(fn(T.init)) == Flag!"each"))
+                {
+                    cast(void) fn(sl.front.front);
+                }
+                else
+                {
+                    if (fn(sl.front.front) == No.each)
+                        return No.each;
+                }
+                sl ~= sl.front.tail;
+                sl.popFront;
+            }
+            return Yes.each;
+        }
+    }
+
+    ///
+    @safe unittest
+    {
+        import std.typecons : Flag, Yes, No;
+
+        auto ia = immutable Array!int([1, 2, 3]);
+
+        static bool foo(int x) { return x > 0; }
+        static Flag!"each" bar(int x) { return x > 1 ? Yes.each : No.each; }
+
+        assert(ia.each!foo == Yes.each);
+        assert(ia.each!bar == No.each);
+    }
+
+    //int opApply(int delegate(const ref T) dg) const
+    //{
+        //if (_payload.length && dg(_payload[0])) return 1;
+        //if (!this.empty) this.tail.opApply(dg);
+        //return 0;
+    //}
+
+    /**
+     * Perform a shallow copy of the array.
+     *
+     * Returns:
+     *      a new reference to the current array.
+     *
+     * Complexity: $(BIGOH 1).
+     */
     ref auto save(this _)()
     {
         debug(CollectionArray)
@@ -470,21 +904,85 @@ public:
         return this;
     }
 
-    typeof(this) dup()
+    ///
+    @safe unittest
+    {
+        auto stuff = [1, 2, 3];
+        auto a = Array!int(stuff);
+        size_t i = 0;
+
+        auto tmp = a.save;
+        while (!tmp.empty)
+        {
+            assert(tmp.front == stuff[i++]);
+            tmp.popFront;
+        }
+        assert(tmp.empty);
+        assert(!a.empty);
+    }
+
+    // TODO: needs to know if _allocator is shared or not
+    // We also need to create a tmp array for all the elements
+    Array!T idup(this Q)();
+
+    /**
+     * Perform a copy of the array. This will create a new array that will copy
+     * the elements of the current array. This will `NOT` call `dup` on the
+     * elements of the array, regardless if `T` defines it or not.
+     *
+     * Returns:
+     *      a new mutable array.
+     *
+     * Complexity: $(BIGOH n).
+     */
+    Array!T dup(this Q)()
     {
         debug(CollectionArray)
         {
             writefln("Array.dup: begin");
             scope(exit) writefln("Array.dup: end");
         }
-        IAllocator alloc = getAllocator();
-        if (alloc is null)
+        Array!T result;
+        result._allocator = _allocator;
+
+        static if (is(Q == immutable) || is(Q == const))
         {
-            alloc = theAllocator;
+            result.reserve(length);
+            foreach(i; 0 .. length)
+            {
+                result ~= this[i];
+            }
         }
-        return typeof(this)(alloc, this);
+        else
+        {
+            result.insert(0, this);
+        }
+        return result;
     }
 
+    ///
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+
+        auto stuff = [1, 2, 3];
+        auto a = immutable Array!int(stuff);
+        auto aDup = a.dup;
+        assert(equal(aDup, stuff));
+        aDup.front = 0;
+        assert(aDup.front == 0);
+        assert(a.front == 1);
+    }
+
+    /**
+     * Return a slice to the current array. This is equivalent to calling
+     * `save`.
+     *
+     * Returns:
+     *      an array that references the current array.
+     *
+     * Complexity: $(BIGOH 1)
+     */
     Qualified opSlice(this Qualified)()
     {
         debug(CollectionArray)
@@ -495,6 +993,20 @@ public:
         return this.save;
     }
 
+    /**
+     * Return a slice to the current array that is bounded by `start` and `end`.
+     * `start` must be less than or equal to `end` and `end` must be less than
+     * or equal to `length`.
+     *
+     * Returns:
+     *      an array that references the current array.
+     *
+     * Params:
+     *      start = a positive integer
+     *      end = a positive integer
+     *
+     * Complexity: $(BIGOH 1)
+     */
     Qualified opSlice(this Qualified)(size_t start, size_t end)
     in
     {
@@ -508,54 +1020,165 @@ public:
             writefln("Array.opSlice(s, e): begin");
             scope(exit) writefln("Array.opSlice(s, e): end");
         }
-        return typeof(this)(_support, _payload[start .. end], _ouroborosAllocator);
+        return typeof(this)(_support, _payload[start .. end], _allocator);
     }
 
+    ///
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+
+        auto stuff = [1, 2, 3];
+        auto a = Array!int(stuff);
+        assert(equal(a[], stuff));
+        assert(equal(a[1 .. $], stuff[1 .. $]));
+    }
+
+    /**
+     * Provide access to the element at `idx` in the array.
+     * `idx` must be less than `length`.
+     *
+     * Returns:
+     *      a reference to the element found at `idx`.
+     *
+     * Params:
+     *      idx = a positive integer
+     *
+     * Complexity: $(BIGOH 1).
+     */
     ref auto opIndex(this _)(size_t idx)
     in
     {
-        assert(idx <= length, "Array.opIndex: Index out of bounds");
+        assert(idx < length, "Array.opIndex: Index out of bounds");
     }
     body
     {
         return _payload[idx];
     }
 
+    ///
+    @safe unittest
+    {
+        auto a = Array!int([1, 2, 3]);
+        assert(a[2] == 3);
+    }
+
+    /**
+     * Apply an unary operation to the element at `idx` in the array.
+     * `idx` must be less than `length`.
+     *
+     * Returns:
+     *      a reference to the element found at `idx`.
+     *
+     * Params:
+     *      idx = a positive integer
+     *
+     * Complexity: $(BIGOH 1).
+     */
     ref auto opIndexUnary(string op)(size_t idx)
     in
     {
-        assert(idx <= length, "Array.opIndexUnary!" ~ op ~ ": Index out of bounds");
+        assert(idx < length, "Array.opIndexUnary!" ~ op ~ ": Index out of bounds");
     }
     body
     {
         mixin("return " ~ op ~ "_payload[idx];");
     }
 
+    ///
+    @safe unittest
+    {
+        auto a = Array!int([1, 2, 3]);
+        int x = --a[2];
+        assert(a[2] == 2);
+        assert(x == 2);
+    }
+
+    /**
+     * Assign `elem` to the element at `idx` in the array.
+     * `idx` must be less than `length`.
+     *
+     * Returns:
+     *      a reference to the element found at `idx`.
+     *
+     * Params:
+     *      elem = an element that is implicitly convertible to `T`
+     *      idx = a positive integer
+     *
+     * Complexity: $(BIGOH 1).
+     */
     ref auto opIndexAssign(U)(U elem, size_t idx)
     if (isImplicitlyConvertible!(U, T))
     in
     {
-        assert(idx <= length, "Array.opIndexAssign: Index out of bounds");
+        assert(idx < length, "Array.opIndexAssign: Index out of bounds");
     }
     body
     {
         return _payload[idx] = elem;
     }
 
+    ///
+    @safe unittest
+    {
+        auto a = Array!int([1, 2, 3]);
+        a[2] = 2;
+        assert(a[2] == 2);
+        (a[2] = 3)++;
+        assert(a[2] == 4);
+    }
+
+    /**
+     * Assign to the element at `idx` in the array the result of
+     * $(D a[idx] op elem).
+     * `idx` must be less than `length`.
+     *
+     * Returns:
+     *      a reference to the element found at `idx`.
+     *
+     * Params:
+     *      elem = an element that is implicitly convertible to `T`
+     *      idx = a positive integer
+     *
+     * Complexity: $(BIGOH 1).
+     */
     ref auto opIndexOpAssign(string op, U)(U elem, size_t idx)
     if (isImplicitlyConvertible!(U, T))
     in
     {
-        assert(idx <= length, "Array.opIndexOpAssign!" ~ op ~ ": Index out of bounds");
+        assert(idx < length, "Array.opIndexOpAssign!" ~ op ~ ": Index out of bounds");
     }
     body
     {
         mixin("return _payload[idx]" ~ op ~ "= elem;");
     }
 
+    ///
+    @safe unittest
+    {
+        auto a = Array!int([1, 2, 3]);
+        a[2] += 2;
+        assert(a[2] == 5);
+        (a[2] += 3)++;
+        assert(a[2] == 9);
+    }
+
+    /**
+     * Create a new array that results from the concatenation of this array
+     * with `rhs`.
+     *
+     * Params:
+     *      rhs = can be an element that is implicitly convertible to `T`, an
+     *            input range of such elements, or another `Array`
+     *
+     * Returns:
+     *      the newly created array
+     *
+     * Complexity: $(BIGOH n + m), where `m` is the number of elements in `rhs`.
+     */
     auto ref opBinary(string op, U)(auto ref U rhs)
         if (op == "~" &&
-            (is (U == typeof(this))
+            (is (U : const typeof(this))
              || is (U : T)
              || (isInputRange!U && isImplicitlyConvertible!(ElementType!U, T))
             ))
@@ -566,13 +1189,53 @@ public:
             scope(exit) writefln("Array.opBinary!~: end");
         }
 
-        //TODO: should work for immutable, const as well
-
-        typeof(this) newArray = this.dup();
-        newArray.insert(length, rhs);
+        auto newArray = this.dup();
+        static if (is(U : const typeof(this)))
+        {
+            foreach(i; 0 .. rhs.length)
+            {
+                newArray ~= rhs[i];
+            }
+        }
+        else
+        {
+            newArray.insert(length, rhs);
+            // Or
+            // newArray ~= rhs;
+        }
         return newArray;
     }
 
+    ///
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+
+        auto a = Array!int(1);
+        auto a2 = a ~ 2;
+
+        assert(equal(a2, [1, 2]));
+        a.front = 0;
+        assert(equal(a2, [1, 2]));
+    }
+
+    /**
+     * Assign `rhs` to this array. The current array will now become another
+     * reference to `rhs`, unless `rhs` is `null`, in which case the current
+     * array will become empty. If `rhs` refers to the current array nothing will
+     * happen.
+     *
+     * If there are no more references to the previous array, the previous
+     * array will be destroyed; this leads to a $(BIGOH n) complexity.
+     *
+     * Params:
+     *      rhs = a reference to an array
+     *
+     * Returns:
+     *      a reference to this array
+     *
+     * Complexity: $(BIGOH n).
+     */
     auto ref opAssign()(auto ref typeof(this) rhs)
     {
         debug(CollectionArray)
@@ -592,14 +1255,42 @@ public:
             debug(CollectionArray) writefln("Array.opAssign: Array %s has refcount: %s",
                     rhs._payload, *prefCount(rhs._support));
         }
-        //__dtor();
         destroyUnused();
         _support = rhs._support;
         _payload = rhs._payload;
-        _ouroborosAllocator = rhs._ouroborosAllocator;
+        _allocator = rhs._allocator;
         return this;
     }
 
+    ///
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+
+        auto a = Array!int(1);
+        auto a2 = Array!int(1, 2);
+
+        a = a2; // this will free the old a
+        assert(equal(a, [1, 2]));
+        a.front = 0;
+        assert(equal(a2, [0, 2]));
+    }
+
+    /**
+     * Append the elements of `rhs` at the end of the array.
+     *
+     * If no allocator was provided when the list was created, the
+     * $(REF, GCAllocator, std,experimental,allocator,gc_allocator) will be used.
+     *
+     * Params:
+     *      rhs = can be an element that is implicitly convertible to `T`, an
+     *            input range of such elements, or another `Array`
+     *
+     * Returns:
+     *      a reference to this array
+     *
+     * Complexity: $(BIGOH n + m), where `m` is the number of elements in `rhs`.
+     */
     auto ref opOpAssign(string op, U)(auto ref U rhs)
         if (op == "~" &&
             (is (U == typeof(this))
@@ -615,9 +1306,30 @@ public:
         insert(length, rhs);
         return this;
     }
+
+    ///
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+
+        Array!int a;
+        auto a2 = Array!int(4, 5);
+        assert(a.empty);
+
+        a ~= 1;
+        a ~= [2, 3];
+        assert(equal(a, [1, 2, 3]));
+
+        // append an input range
+        a ~= a2;
+        assert(equal(a, [1, 2, 3, 4, 5]));
+        a2.front = 0;
+        assert(equal(a, [1, 2, 3, 4, 5]));
+    }
 }
 
-version(unittest) private @trusted void testConcatAndAppend(IAllocator allocator)
+version(unittest) private nothrow pure @safe
+void testConcatAndAppend(RCIAllocator allocator)
 {
     import std.algorithm.comparison : equal;
 
@@ -649,23 +1361,37 @@ version(unittest) private @trusted void testConcatAndAppend(IAllocator allocator
     a5 = a5;
     a5[0] = 10;
     assert(equal(a5, a6));
+
+    // Test concat with mixed qualifiers
+    auto a7 = immutable Array!(int)(a5);
+    assert(a7.front == 10);
+    a5.front = 1;
+    assert(a7.front == 10);
+    auto a8 = a5 ~ a7;
+    assert(equal(a8, [1, 2, 3, 10, 2, 3]));
+
+    auto a9 = const Array!(int)(a5);
+    auto a10 = a5 ~ a9;
+    assert(equal(a10, [1, 2, 3, 1, 2, 3]));
 }
 
-@trusted unittest
+@safe unittest
 {
     import std.conv;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
-
-    () @safe {
-        testConcatAndAppend(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
-    }();
+    {
+        auto _allocator = (() @trusted => allocatorObject(&statsCollectorAlloc))();
+        () nothrow pure @safe {
+            testConcatAndAppend(_allocator);
+        }();
+    }
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
-version(unittest) private @trusted void testSimple(IAllocator allocator)
+version(unittest) private nothrow pure @safe
+void testSimple(RCIAllocator allocator)
 {
     import std.algorithm.comparison : equal;
     import std.algorithm.searching : canFind;
@@ -707,21 +1433,23 @@ version(unittest) private @trusted void testSimple(IAllocator allocator)
     assert(!canFind(a, -10));
 }
 
-@trusted unittest
+@safe unittest
 {
     import std.conv;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
-
-    () @safe {
-        testSimple(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
-    }();
+    {
+        auto _allocator = (() @trusted => allocatorObject(&statsCollectorAlloc))();
+        () nothrow pure @safe {
+            testSimple(_allocator);
+        }();
+    }
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
-version(unittest) private @trusted void testSimpleImmutable(IAllocator allocator)
+version(unittest) private nothrow pure @safe
+void testSimpleImmutable(RCIAllocator allocator)
 {
     import std.algorithm.comparison : equal;
     import std.algorithm.searching : canFind;
@@ -756,21 +1484,23 @@ version(unittest) private @trusted void testSimpleImmutable(IAllocator allocator
     assert(!canFind(a, -10));
 }
 
-@trusted unittest
+@safe unittest
 {
     import std.conv;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
-
-    () @safe {
-        testSimpleImmutable(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
-    }();
+    {
+        auto _allocator = (() @trusted => allocatorObject(&statsCollectorAlloc))();
+        () nothrow pure @safe {
+            testSimpleImmutable(_allocator);
+        }();
+    }
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
-version(unittest) private @trusted void testCopyAndRef(IAllocator allocator)
+version(unittest) private nothrow pure @safe
+void testCopyAndRef(RCIAllocator allocator)
 {
     import std.algorithm.comparison : equal;
 
@@ -803,22 +1533,26 @@ version(unittest) private @trusted void testCopyAndRef(IAllocator allocator)
     assert(aFromDup.front == 2);
 }
 
-@trusted unittest
+@safe unittest
 {
     import std.conv;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
-
-    () @safe {
-        testCopyAndRef(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
-    }();
+    {
+        auto _allocator = (() @trusted => allocatorObject(&statsCollectorAlloc))();
+        () nothrow pure @safe {
+            testCopyAndRef(_allocator);
+        }();
+    }
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
-version(unittest) private @trusted void testImmutability(IAllocator allocator)
+version(unittest) private nothrow pure @safe
+void testImmutability(RCISharedAllocator allocator)
 {
+    import std.algorithm.comparison : equal;
+
     auto a = immutable Array!(int)(allocator, 1, 2, 3);
     auto a2 = a;
     auto a3 = a2.save();
@@ -831,9 +1565,19 @@ version(unittest) private @trusted void testImmutability(IAllocator allocator)
     auto a4 = a2.tail;
     assert(a4.front == 2);
     static assert(!__traits(compiles, a4 = a4.tail));
+
+    // Create a mutable copy from an immutable array
+    auto a5 = a.dup();
+    assert(equal(a5, [1, 2, 3]));
+    assert(a5.front == 1);
+    a5.front = 2;
+    assert(a5.front == 2);
+    assert(a.front == 1);
+    assert(equal(a5, [2, 2, 3]));
 }
 
-version(unittest) private @trusted void testConstness(IAllocator allocator)
+version(unittest) private nothrow pure @safe
+void testConstness(RCISharedAllocator allocator)
 {
     auto a = const Array!(int)(allocator, 1, 2, 3);
     auto a2 = a;
@@ -849,25 +1593,27 @@ version(unittest) private @trusted void testConstness(IAllocator allocator)
     static assert(!__traits(compiles, a4 = a4.tail));
 }
 
-@trusted unittest
+@safe unittest
 {
     import std.conv;
+    import std.experimental.allocator : processAllocator;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
+    // TODO: StatsCollector needs to be made shareable
+    //auto _allocator = sharedAllocatorObject(&statsCollectorAlloc);
 
-    () @safe {
-        testImmutability(_allocator);
-        testConstness(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
+    () nothrow pure @safe {
+        testImmutability(processAllocatorObject());
+        testConstness(processAllocatorObject());
     }();
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
-version(unittest) private @trusted void testWithStruct(IAllocator allocator)
+version(unittest) private nothrow pure @safe
+void testWithStruct(RCIAllocator allocator, RCISharedAllocator sharedAlloc)
 {
     import std.algorithm.comparison : equal;
-    import std.stdio;
 
     auto array = Array!int(allocator, 1, 2, 3);
     {
@@ -877,28 +1623,31 @@ version(unittest) private @trusted void testWithStruct(IAllocator allocator)
         assert(equal(arrayOfArrays.front, [2, 2, 3]));
         static assert(!__traits(compiles, arrayOfArrays.insert(1)));
 
-        auto immArrayOfArrays = immutable Array!(Array!int)(allocator, array);
+        auto immArrayOfArrays = immutable Array!(Array!int)(sharedAlloc, array);
         assert(immArrayOfArrays.front.front == 2);
         static assert(!__traits(compiles, immArrayOfArrays.front.front = 2));
     }
     assert(equal(array, [2, 2, 3]));
 }
 
-@trusted unittest
+@safe unittest
 {
     import std.conv;
+    import std.experimental.allocator : processAllocator;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
-
-    () @safe {
-        testWithStruct(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
-    }();
+    {
+        auto _allocator = (() @trusted => allocatorObject(&statsCollectorAlloc))();
+        () nothrow pure @safe {
+            testWithStruct(_allocator, processAllocatorObject());
+        }();
+    }
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
-version(unittest) private @trusted void testWithClass(IAllocator allocator)
+version(unittest) private nothrow pure @safe
+void testWithClass(RCIAllocator allocator)
 {
     class MyClass
     {
@@ -916,21 +1665,23 @@ version(unittest) private @trusted void testWithClass(IAllocator allocator)
     assert(c.x == 20);
 }
 
-@trusted unittest
+@safe unittest
 {
     import std.conv;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
-
-    () @safe {
-        testWithClass(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
-    }();
+    {
+        auto _allocator = (() @trusted => allocatorObject(&statsCollectorAlloc))();
+        () nothrow pure @safe {
+            testWithClass(_allocator);
+        }();
+    }
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
-version(unittest) private @trusted void testOpOverloads(IAllocator allocator)
+version(unittest) private nothrow pure @safe
+void testOpOverloads(RCIAllocator allocator)
 {
     auto a = Array!int(allocator, 1, 2, 3, 4);
     assert(a[0] == 1); // opIndex
@@ -960,21 +1711,23 @@ version(unittest) private @trusted void testOpOverloads(IAllocator allocator)
     assert(a[0] == 2);
 }
 
-@trusted unittest
+@safe unittest
 {
     import std.conv;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
-
-    () @safe {
-        testOpOverloads(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
-    }();
+    {
+        auto _allocator = (() @trusted => allocatorObject(&statsCollectorAlloc))();
+        () nothrow pure @safe {
+            testOpOverloads(_allocator);
+        }();
+    }
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
-version(unittest) private @trusted void testSlice(IAllocator allocator)
+version(unittest) private nothrow pure @safe
+void testSlice(RCIAllocator allocator)
 {
     import std.algorithm.comparison : equal;
 
@@ -998,54 +1751,24 @@ version(unittest) private @trusted void testSlice(IAllocator allocator)
     assert(equal(a, [1, 5, 5, 4]));
 }
 
-@trusted unittest
+@safe unittest
 {
     import std.conv;
     SCAlloc statsCollectorAlloc;
-    auto _allocator = allocatorObject(statsCollectorAlloc);
-
-    () @safe {
-        testSlice(_allocator);
-        auto bytesUsed = _allocator.impl.bytesUsed;
-        assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
-    }();
+    {
+        auto _allocator = (() @trusted => allocatorObject(&statsCollectorAlloc))();
+        () nothrow pure @safe {
+            testSlice(_allocator);
+        }();
+    }
+    auto bytesUsed = statsCollectorAlloc.bytesUsed;
+    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes");
 }
 
-//@trusted unittest {
-    //import stdx.collections.slist;
-    //import std.stdio;
-
-    //{
-        //auto a = Array!(SList!int)(SList!int(1));
-        //writefln("Array: %s", *a.prefCount(a._support));
-        //writefln("SList: %s", *a.front.prefCount(a.front._head));
-        //{
-            //auto b = a;
-            //writefln("Array: %s", *a.prefCount(a._support));
-            //writefln("SList: %s", *a.front.prefCount(a.front._head));
-            //size_t i = 0;
-            //auto sl = a.front;
-            ////while(!a.front.empty)
-            ////{
-                ////writefln("[%s] %s", i, a.front.front);
-                ////a.front.popFront;
-            ////}
-            //while(!sl.empty)
-            //{
-                //writefln("[%s] %s", i, sl.front);
-                //sl.popFront;
-            //}
-            //writefln("At end of scope");
-        //}
-        //writefln("After end of scope");
-        //writefln("Array: %s", *a.prefCount(a._support));
-        //writefln("SList: %s", *a.front.prefCount(a.front._head));
-    //}
-
-    //import std.conv;
-    //writefln("HERE");
-    //auto bytesUsed = _allocator.bytesUsed;
-    //assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-                           //~ to!string(bytesUsed) ~ " bytes");
-/*}*/
+/*@nogc*/ nothrow pure @safe
+unittest
+{
+    Array!int a;
+    auto b = Array!int(1, 2, 3);
+}
