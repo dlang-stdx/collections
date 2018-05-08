@@ -60,7 +60,7 @@ private:
 
     void delRef(Unqual!T[] support)
     {
-        // Will be optimized away, but the type sistem infers T's safety
+        // Will be optimized away, but the type system infers T's safety
         if (0) { T t = T.init; }
 
         assert(support !is null);
@@ -616,7 +616,7 @@ public:
             scope(exit) writefln("Array.insert: end");
         }
 
-        // Will be optimized away, but the type sistem infers T's safety
+        // Will be optimized away, but the type system infers T's safety
         if (0) { T t = T.init; }
 
         assert(pos <= _payload.length);
