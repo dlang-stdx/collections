@@ -60,7 +60,7 @@ private:
 
     void delRef(Unqual!T[] support)
     {
-        // Will be optimized away, but the type sistem infers T's safety
+        // Will be optimized away, but the type system infers T's safety
         if (0) { T t = T.init; }
 
         assert(support !is null);
@@ -74,30 +74,29 @@ private:
     {
         static if (hasLength!StuffType)
         {
-            auto stuffLengthStr = ""
-                ~"size_t stuffLength = " ~ stuff ~ ".length;";
+            auto stuffLengthStr = q{
+                size_t stuffLength = } ~ stuff ~ ".length;";
         }
         else
         {
-            auto stuffLengthStr = ""
-                ~"import std.range.primitives : walkLength;"
-                ~"size_t stuffLength = walkLength(" ~ stuff ~ ");";
+            auto stuffLengthStr = q{
+                import std.range.primitives : walkLength;
+                size_t stuffLength = walkLength(} ~ stuff ~ ");";
         }
 
-        return ""
-        ~ stuffLengthStr
-        ~"_allocator = immutable AllocatorHandler(allocator);"
-        ~"auto tmpSupport = (() @trusted => cast(Unqual!T[])(_allocator.allocate(stuffLength * T.sizeof)))();"
-        ~"assert(stuffLength == 0 || (stuffLength > 0 && tmpSupport !is
-        null));"
-        ~"size_t i = 0;"
-        ~"foreach (item; " ~ stuff ~ ")"
-        ~"{"
-            ~"(() @trusted => emplace(&tmpSupport[i++], item))();"
-        ~"}"
-        ~"_support = (() @trusted => cast(typeof(_support))(tmpSupport))();"
-        ~"_payload = (() @trusted => cast(typeof(_payload))(_support[0 .. stuffLength]))();"
-        ~"if (_support) addRef(_support);";
+        return stuffLengthStr ~ q{
+        _allocator = immutable AllocatorHandler(allocator);
+        auto tmpSupport = (() @trusted => cast(Unqual!T[])(_allocator.allocate(stuffLength * T.sizeof)))();
+        assert(stuffLength == 0 || (stuffLength > 0 && tmpSupport !is null));
+        size_t i = 0;
+        foreach (item; } ~ stuff ~ q{)
+        {
+          (() @trusted => emplace(&tmpSupport[i++], item))();
+        }
+        _support = (() @trusted => cast(typeof(_support))(tmpSupport))();
+        _payload = (() @trusted => cast(typeof(_payload))(_support[0 .. stuffLength]))();
+        if (_support) addRef(_support);
+        };
     }
 
     void destroyUnused()
@@ -617,7 +616,7 @@ public:
             scope(exit) writefln("Array.insert: end");
         }
 
-        // Will be optimized away, but the type sistem infers T's safety
+        // Will be optimized away, but the type system infers T's safety
         if (0) { T t = T.init; }
 
         assert(pos <= _payload.length);
