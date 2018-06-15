@@ -160,6 +160,26 @@ public:
         auto b = RCString(theAllocator, ['1', '2', '3']);
     }
 
+    this(this Q)(string s)
+    {
+        import std.string : representation;
+        static if (is(Q == immutable) || is(Q == const))
+        {
+            this(processAllocatorObject(), s.dup.representation);
+        }
+        else
+        {
+            this(threadAllocatorObject(), s.dup.representation);
+        }
+    }
+
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+        auto s = RCString("dlang");
+        assert(s.by!char.equal("dlang"));
+    }
+
     bool empty() const
     {
         return _support.empty;
