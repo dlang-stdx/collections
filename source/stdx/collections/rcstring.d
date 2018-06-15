@@ -1,4 +1,17 @@
-///
+/**
+`RCString` is a reference-counted string which is based on
+$(REF Array, std,experimental,collections) of `ubyte`s.
+By default, `RCString` is not a range. The `.by` helpers can be used to specify
+the iteration mode.
+RC-String internally stores the string as UTF-8.
+
+$(UL
+    $(LI `str.by!char` - iterates over individual `char` characters. No auto-decoding is done.)
+    $(LI `str.by!wchar` - iterates over `wchar` characters. Auto-decoding is done.)
+    $(LI `str.by!dchar` - iterates over `dchar` characters. Auto-decoding is done.)
+    $(LI `str.by!ubyte`- iterates over the raw `ubyte` representation. No auto-decoding is done. This is similar to $(REF representation, std,string) for built-in strings)
+)
+*/
 module stdx.collections.rcstring;
 
 import stdx.collections.common;
