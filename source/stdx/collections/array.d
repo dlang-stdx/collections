@@ -1312,6 +1312,58 @@ public:
         a2.front = 0;
         assert(equal(a, [1, 2, 3, 4, 5]));
     }
+
+    ///
+    bool opEquals()(auto ref typeof(this) rhs) const
+    {
+        import std.algorithm.comparison : equal;
+        return _support.equal(rhs);
+    }
+
+    ///
+    @safe unittest
+    {
+        auto arr1 = Array!int(1, 2);
+        auto arr2 = Array!int(1, 2);
+        auto arr3 = Array!int(2, 3);
+        assert(arr1 == arr2);
+        assert(arr2 == arr1);
+        assert(arr1 != arr3);
+        assert(arr3 != arr1);
+        assert(arr2 != arr3);
+        assert(arr3 != arr2);
+    }
+
+    ///
+    int opCmp()(auto ref typeof(this) rhs) const
+    {
+        import std.algorithm.comparison : min, equal;
+        import std.math : sgn;
+        foreach (i; 0 .. min(length, rhs.length))
+        {
+            if (this.opIndex(i) < rhs[i])
+                return -1;
+            else if (this.opIndex(i) > rhs[i])
+                return 1;
+        }
+        return cast(int) sgn(length - rhs.length);
+    }
+
+    ///
+    @safe unittest
+    {
+        auto arr1 = Array!int(1, 2);
+        auto arr2 = Array!int(1, 2);
+        auto arr3 = Array!int(2, 3);
+        auto arr4 = Array!int(0, 3);
+        assert(arr1 <= arr2);
+        assert(arr2 >= arr1);
+        assert(arr1 < arr3);
+        assert(arr3 > arr1);
+        assert(arr4 < arr1);
+        assert(arr4 < arr3);
+        assert(arr3 > arr4);
+    }
 }
 
 version(unittest) private nothrow pure @safe

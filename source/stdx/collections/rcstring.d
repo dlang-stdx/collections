@@ -201,6 +201,49 @@ public:
         }
     }
 
+    // opIndex?
+    // opSlice
+    // opCast / opCastbool
+    // opBinary
+
+    typeof(this) opBinary(string op)(typeof(this) rhs)
+    {
+    }
+
+    ///
+    bool opEquals()(auto ref typeof(this) rhs) const
+    {
+        return _support == rhs._support;
+    }
+
+    ///
+    @safe unittest
+    {
+        assert(RCString("abc") == RCString("abc"));
+        assert(RCString("abc") != RCString("Abc"));
+        assert(RCString("abc") != RCString("abd"));
+        assert(RCString("abc") != RCString(""));
+        assert(RCString("") == RCString(""));
+    }
+
+    ///
+    int opCmp()(auto ref typeof(this) rhs) const
+    {
+        return _support.opCmp(rhs._support);
+    }
+
+    ///
+    @safe unittest
+    {
+        assert(RCString("abc") <= RCString("abc"));
+        assert(RCString("abc") >= RCString("abc"));
+        assert(RCString("abc") > RCString("Abc"));
+        assert(RCString("Abc") < RCString("abc"));
+        assert(RCString("abc") < RCString("abd"));
+        assert(RCString("abc") > RCString(""));
+        assert(RCString("") <= RCString(""));
+        assert(RCString("") >= RCString(""));
+    }
 }
 
 @safe unittest
