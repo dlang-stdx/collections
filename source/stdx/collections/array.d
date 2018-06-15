@@ -27,9 +27,10 @@ struct Array(T)
     import core.atomic : atomicOp;
     import std.algorithm.mutation : move;
 
+    package T[] _payload;
+    package Unqual!T[] _support;
+
 private:
-    T[] _payload;
-    Unqual!T[] _support;
 
     static enum double capacityFactor = 3.0 / 2;
     static enum initCapacity = 3;
@@ -467,10 +468,12 @@ public:
         // Will be optimized away, but the type sistem infers T's safety
         if (0) { T t = T.init; }
 
+        if (n <= capacity) { return; }
+
+        // TODO: why would we want to overwrite the user-defined allocator?
         auto a = threadAllocatorObject();
         setAllocator(a);
 
-        if (n <= capacity) { return; }
         if (_support && _allocator.opCmpPrefix!"=="(_support, 0))
         {
             void[] buf = _support;
@@ -488,7 +491,7 @@ public:
             }
             else
             {
-                //assert(0, "Array.reserve: Failed to expand array.");
+                assert(0, "Array.reserve: Failed to expand array.");
             }
         }
 

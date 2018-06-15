@@ -16,6 +16,7 @@ module stdx.collections.rcstring;
 
 import stdx.collections.common;
 import stdx.collections.array;
+import std.traits : isSomeChar;
 
 debug(CollectionRCString) import std.stdio;
 
@@ -201,13 +202,113 @@ public:
         }
     }
 
-    // opIndex?
-    // opSlice
-    // opCast / opCastbool
-    // opBinary
-
+    ///
     typeof(this) opBinary(string op)(typeof(this) rhs)
+    if (op == "~")
     {
+        RCString s = this;
+        s._support ~= rhs._support;
+        return s;
+    }
+
+    /// ditto
+    typeof(this) opBinary(string op)(string rhs)
+    if (op == "~")
+    {
+        auto rcs = RCString(rhs);
+        RCString s = this;
+        s._support ~= rcs._support;
+        return s;
+    }
+
+    /// ditto
+    typeof(this) opBinaryRight(string op)(string rhs)
+    if (op == "~")
+    {
+        auto s = RCString(rhs);
+        RCString rcs = this;
+        s._support ~= rcs._support;
+        return s;
+    }
+
+    typeof(this) opBinary(string op, C)(C c)
+    if (op == "~" && isSomeChar!C)
+    {
+        RCString s = this;
+        s._support ~= cast(ubyte) c;
+        return s;
+    }
+
+    /// ditto
+    typeof(this) opBinaryRight(string op, C)(C c)
+    if (op == "~")
+    {
+        RCString rcs = this;
+        rcs._support.insert(0, cast(ubyte) c);
+        return rcs;
+    }
+
+    // TODO: support input ranges
+    // TODO: wchar + dchar
+
+    ///
+    @safe unittest
+    {
+        auto r1 = RCString("abc");
+        auto r2 = RCString("def");
+        assert((r1 ~ r2).equal("abcdef"));
+        assert((r1 ~ "foo").equal("abcfoo"));
+        assert(("abc" ~ r2).equal("abcdef"));
+        assert((r1 ~ 'd').equal("abcd"));
+        assert(('a' ~ r2).equal("adef"));
+    }
+
+    ///
+    typeof(this) opOpAssign(string op)(typeof(this) rhs)
+    if (op == "~")
+    {
+        _support ~= rhs._support;
+        return this;
+    }
+
+    ///
+    @safe unittest
+    {
+        auto r1 = RCString("abc");
+        r1 ~= RCString("def");
+        assert(r1.equal("abcdef"));
+    }
+
+    /// ditto
+    typeof(this) opOpAssign(string op)(string rhs)
+    if (op == "~")
+    {
+        import std.string : representation;
+        _support ~= rhs.representation;
+        return this;
+    }
+
+    ///
+    @safe unittest
+    {
+        auto r1 = RCString("abc");
+        r1 ~= "def";
+        assert(r1.equal("abcdef"));
+    }
+
+    typeof(this) opOpAssign(string op, C)(C c)
+    if (op == "~" && isSomeChar!C)
+    {
+        _support ~= cast(ubyte) c;
+        return this;
+    }
+
+    ///
+    @safe unittest
+    {
+        auto r1 = RCString("abc");
+        r1 ~= 'd';
+        assert(r1.equal("abcd"));
     }
 
     ///
@@ -224,6 +325,24 @@ public:
         assert(RCString("abc") != RCString("abd"));
         assert(RCString("abc") != RCString(""));
         assert(RCString("") == RCString(""));
+    }
+
+    /// ditto
+    bool opEquals()(string rhs) const
+    {
+        import std.string : representation;
+        import std.algorithm.comparison : equal;
+        return _support._payload.equal(rhs.representation);
+    }
+
+    ///
+    @safe unittest
+    {
+        assert(RCString("abc") == "abc");
+        assert(RCString("abc") != "Abc");
+        assert(RCString("abc") != "abd");
+        assert(RCString("abc") != "");
+        assert(RCString("") == "");
     }
 
     ///
@@ -244,6 +363,85 @@ public:
         assert(RCString("") <= RCString(""));
         assert(RCString("") >= RCString(""));
     }
+
+    //auto opSlice(size_t start, size_t end)
+    //{
+        //RCString s = save;
+        //import std.stdio;
+        //s._support[start .. end].writeln;
+        //s._support = s._support[start .. end];
+        //s._support.writeln;
+        //return s;
+    //}
+
+    /////
+    //@safe unittest
+    //{
+        //auto a = RCString("abcdef");
+        //assert(a[2 .. $].equal("cdef"));
+    //}
+
+    auto opDollar()
+    {
+        return _support.length;
+    }
+
+    auto save()
+    {
+        RCString s = this;
+        return s;
+    }
+
+    auto opSlice()
+    {
+        return this.save;
+    }
+
+    // Phobos
+    auto equal(T)(T rhs)
+    {
+        import std.algorithm.comparison : equal;
+        return by!char.equal(rhs);
+    }
+
+    auto writeln(T...)(T rhs)
+    {
+        import std.stdio : writeln;
+        return by!char.writeln(rhs);
+    }
+
+    // opIndex, opIndexAssign
+    // opSlice
+    // opCast / opCastbool
+    // opBinary
+    // opAssign
+    // opSliceAssign
+
+    // TODO: opCmp for strings
+
+    string toString()
+    {
+        import std.array : array;
+        import std.exception : assumeUnique;
+        return by!char.array.assumeUnique;
+    }
+
+    //auto opIndexOpAssign(string op, U)(U elem)
+    //{
+        //foreach (ref e; _payload)
+            //e = elem;
+        ////_payload[] = elem;
+        //return this;
+    //}
+
+    //@system unittest
+    //{
+        //auto rcs = RCString("abc");
+        //rcs[] = 'a';
+        //rcs.writeln;
+    //}
+
+    // dup, idup
 }
 
 @safe unittest

@@ -509,8 +509,10 @@ unittest
 enum allocatorHandler = q{
     AllocatorHandler _allocator;
 
-    /// Constructs the ouroboros allocator from allocator if the ouroboros
-    // allocator wasn't previously set
+    /*
+    Constructs the ouroboros allocator from allocator if the ouroboros
+    allocator wasn't previously set
+    */
     /*@nogc*/ nothrow pure @safe
     bool setAllocator(A)(ref A allocator)
     if (is(A == RCIAllocator) || is(A == RCISharedAllocator))
