@@ -3,3 +3,4 @@ collections-test-library
 .generated
 web
 *.html
+bin/
