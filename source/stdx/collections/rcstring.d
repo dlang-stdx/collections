@@ -62,8 +62,7 @@ public:
         }
         static if (is(Q == immutable) || is(Q == const))
         {
-            ubyte[] empty;
-            this(allocator, empty);
+            this(allocator, null);
         }
         else
         {
@@ -84,7 +83,7 @@ public:
     /**
      * Constructs a qualified rcstring out of an `ubyte` array.
      * Because no allocator was provided, the rcstring will use the
-     * $(REF, GCAllocator, std,experimental,allocator,gc_allocator).
+     * $(REF GCAllocator, std,experimental,allocator,gc_allocator).
      *
      * Params:
      *      bytes = a variable number of bytes, either in the form of a
@@ -108,13 +107,10 @@ public:
     @safe unittest
     {
         // Create a list from a list of bytes
-        {
-            auto a = RCString('1', '2', '3');
-        }
+        auto a = RCString('1', '2', '3');
+
         // Create a list from an array of bytes
-        {
-            auto a = RCString(['1', '2', '3']);
-        }
+        auto b = RCString(['1', '2', '3']);
     }
 
     /**
@@ -158,25 +154,11 @@ public:
         import std.experimental.allocator : theAllocator, processAllocator;
 
         // Create a list from a list of ints
-        {
-            auto a = RCString(theAllocator, '1', '2', '3');
-        }
+        auto a = RCString(theAllocator, '1', '2', '3');
+
         // Create a list from an array of ints
-        {
-            auto a = RCString(theAllocator, ['1', '2', '3']);
-        }
+        auto b = RCString(theAllocator, ['1', '2', '3']);
     }
-
-    //char front() const
-    //{
-        //auto c = _support.front;
-        //return c;
-    //}
-
-    //void popFront()
-    //{
-        //_support.popFront;
-    //}
 
     bool empty() const
     {
@@ -187,7 +169,7 @@ public:
     auto by(T)()
     if (is(T == char) || is(T == wchar) || is(T == dchar))
     {
-        Array!char tmp = *cast(Array!char *)(&_support);
+        Array!char tmp = *cast(Array!char*)(&_support);
         static if (is(T == char))
         {
             return tmp;
