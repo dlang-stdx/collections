@@ -52,23 +52,8 @@ private:
 
     // State {
     Node *_head;
-    AllocatorHandler _allocator;
+    mixin(allocatorHandler);
     // }
-
-    /// Constructs the ouroboros allocator from allocator if the ouroboros
-    //allocator wasn't previously set
-    /*@nogc*/ nothrow pure @safe
-    bool setAllocator(A)(ref A allocator)
-    if (is(A == RCIAllocator) || is(A == RCISharedAllocator))
-    {
-        if (_allocator.isNull)
-        {
-            auto a = typeof(_allocator)(allocator);
-            move(a, _allocator);
-            return true;
-        }
-        return false;
-    }
 
     @nogc nothrow pure @trusted
     void addRef(QualNode, this Q)(QualNode node)
@@ -112,20 +97,21 @@ private:
 
     static string immutableInsert(string stuff)
     {
-        return ""
-            ~"_allocator = immutable AllocatorHandler(allocator);"
-            ~"Node *tmpNode;"
-            ~"Node *tmpHead;"
-            ~"foreach (item; " ~ stuff ~ ")"
-            ~"{"
-                ~"Node *newNode;"
-                ~"() @trusted { newNode ="
-                    ~"_allocator.make!(Node)(item, null);"
-                ~"}();"
-                ~"(tmpHead ? tmpNode._next : tmpHead) = newNode;"
-                ~"tmpNode = newNode;"
-            ~"}"
-            ~"_head = (() @trusted => cast(immutable Node*)(tmpHead))();";
+        return q{
+            _allocator = immutable AllocatorHandler(allocator);
+            Node *tmpNode;
+            Node *tmpHead;
+            foreach (item;  } ~ stuff ~ q{ )
+            {
+                Node *newNode;
+                () @trusted { newNode =
+                    _allocator.make!(Node)(item, null);
+                }();
+                (tmpHead ? tmpNode._next : tmpHead) = newNode;
+                tmpNode = newNode;
+            }
+            _head = (() @trusted => cast(immutable Node*)(tmpHead))();
+        };
     }
 
 public:

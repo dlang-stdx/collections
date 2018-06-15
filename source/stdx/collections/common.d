@@ -505,3 +505,22 @@ unittest
     AllocatorHandler al2 = al.getSharedAlloc;
     assert(al._pMeta == al2._pMeta);
 }
+
+enum allocatorHandler = q{
+    AllocatorHandler _allocator;
+
+    /// Constructs the ouroboros allocator from allocator if the ouroboros
+    // allocator wasn't previously set
+    /*@nogc*/ nothrow pure @safe
+    bool setAllocator(A)(ref A allocator)
+    if (is(A == RCIAllocator) || is(A == RCISharedAllocator))
+    {
+        if (_allocator.isNull)
+        {
+            auto a = typeof(_allocator)(allocator);
+            move(a, _allocator);
+            return true;
+        }
+        return false;
+    }
+};

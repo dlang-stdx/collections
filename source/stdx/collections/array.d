@@ -34,22 +34,7 @@ private:
     static enum double capacityFactor = 3.0 / 2;
     static enum initCapacity = 3;
 
-    AllocatorHandler _allocator;
-
-    /// Constructs the ouroboros allocator from allocator if the ouroboros
-    // allocator wasn't previously set
-    /*@nogc*/ nothrow pure @safe
-    bool setAllocator(A)(ref A allocator)
-    if (is(A == RCIAllocator) || is(A == RCISharedAllocator))
-    {
-        if (_allocator.isNull)
-        {
-            auto a = typeof(_allocator)(allocator);
-            move(a, _allocator);
-            return true;
-        }
-        return false;
-    }
+    mixin(allocatorHandler);
 
     @nogc nothrow pure @trusted
     void addRef(SupportQual, this Q)(SupportQual support)
