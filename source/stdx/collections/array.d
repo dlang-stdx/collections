@@ -432,6 +432,15 @@ public:
         _payload = cast(T[])(_support[slackFront .. len]);
     }
 
+    ///
+    static if (is(T == int))
+    @safe unittest
+    {
+        auto a = Array!int(1, 2, 3);
+        a.forceLength(2);
+        assert(a.length == 2);
+    }
+
     /**
      * Get the available capacity of the `array`; this is equal to `length` of
      * the array plus the available pre-allocated, free, space.
@@ -445,6 +454,15 @@ public:
     size_t capacity() const
     {
         return length + slackBack;
+    }
+
+    ///
+    static if (is(T == int))
+    @safe unittest
+    {
+        auto a = Array!int(1, 2, 3);
+        a.reserve(10);
+        assert(a.capacity == 10);
     }
 
     /**
