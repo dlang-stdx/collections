@@ -11,6 +11,7 @@ version(unittest)
     import std.experimental.allocator.building_blocks.stats_collector;
     import std.experimental.allocator : RCIAllocator, RCISharedAllocator,
            allocatorObject, sharedAllocatorObject;
+    import std.stdio;
 
     private alias SCAlloc = StatsCollector!(Mallocator, Options.bytesUsed);
 }
@@ -583,7 +584,7 @@ public:
             scope(exit) writefln("Array.insert: end");
         }
 
-        // Will be optimized away, but the type sistem infers T's safety
+        // Will be optimized away, but the type system infers T's safety
         if (0) { T t = T.init; }
 
         auto a = threadAllocatorObject();
@@ -1038,8 +1039,9 @@ public:
     {
         debug(CollectionArray)
         {
-            writefln("Array.opSlice(s, e): begin");
-            scope(exit) writefln("Array.opSlice(s, e): end");
+            scope(failure) assert(0, "Array.opSlice");
+            writefln("Array.opSlice(%d, %d): begin", start, end);
+            scope(exit) writefln("Array.opSlice(%d, %d): end", start, end);
         }
         return typeof(this)(_support, _payload[start .. end], _allocator);
     }
@@ -1199,8 +1201,8 @@ public:
     if (isImplicitlyConvertible!(U, T))
     in
     {
-        assert(start <= end, "Array.opIndexAssign: Index out of bounds");
-        assert(end < length, "Array.opIndexAssign: Index out of bounds");
+        assert(start <= end, "Array.opSliceAssign: Index out of bounds");
+        assert(end < length, "Array.opSliceAssign: Index out of bounds");
     }
     body
     {
@@ -1331,13 +1333,15 @@ public:
     {
         debug(CollectionArray)
         {
-            writefln("Array.opAssign: begin");
+            scope(failure) assert(0, "Array.opAssign");
+            writefln("Array.opAssign: begin: %s", rhs);
             scope(exit) writefln("Array.opAssign: end");
         }
 
         if (rhs._support !is null && _support is rhs._support)
         {
-            return this;
+            if (rhs._payload is _payload)
+                return this;
         }
 
         if (rhs._support !is null)

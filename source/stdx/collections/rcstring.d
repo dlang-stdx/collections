@@ -214,7 +214,8 @@ public:
         assert(s.equal("dlang"));
     }
 
-    bool empty()() const
+    @nogc nothrow pure @safe
+    bool empty() const
     {
         return _support.empty;
     }
@@ -535,34 +536,36 @@ public:
         assert(RCString("") >= "".byCodeUnit.take(3));
     }
 
-    //auto opSlice(size_t start, size_t end)
-    //{
-        //RCString s = save;
-        //import std.stdio;
-        //s._support[start .. end].writeln;
-        //s._support = s._support[start .. end];
-        //s._support.writeln;
-        //return s;
-    //}
+    auto opSlice(size_t start, size_t end)
+    {
+        RCString s = save;
+        s._support = s._support[start .. end];
+        return s;
+    }
 
-    /////
-    //@safe unittest
-    //{
-        //auto a = RCString("abcdef");
-        //assert(a[2 .. $].equal("cdef"));
-    //}
+    ///
+    @safe unittest
+    {
+        auto a = RCString("abcdef");
+        assert(a[2 .. $].equal("cdef"));
+        assert(a[0 .. 2].equal("ab"));
+        assert(a[3 .. $ - 1].equal("de"));
+    }
 
+    ///
     auto opDollar()
     {
         return _support.length;
     }
 
+    ///
     auto save()
     {
         RCString s = this;
         return s;
     }
 
+    ///
     auto opSlice()
     {
         return this.save;
@@ -630,13 +633,10 @@ public:
         assert(r1.equal("ab00ef"));
     }
 
-    // dup, idup
-    // opIndex, opIndexAssign
-    // opIndexOpAssign
-    // opSlice
-    // opAssign
+    // TODO: opIndex
+    // TODO: opIndexOpAssign
+    // TODO: opSlice
     // TODO: wchar + dchar
-
 
     ///
     bool opCast(T : bool)()
@@ -652,15 +652,17 @@ public:
     }
 
     /// ditto
-    void opAssign()(RCString r)
+    auto ref opAssign()(RCString rhs)
     {
-        _support = r._support;
+        _support = rhs._support;
+        return this;
     }
 
     /// ditto
-    void opAssign(R)(R r)
+    auto ref opAssign(R)(R rhs)
     {
-        _support = RCString(r)._support;
+        _support = RCString(rhs)._support;
+        return this;
     }
 
     ///
