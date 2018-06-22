@@ -1,1 +1,14 @@
-opCast
+Array
+-----
+
+- opCast
+- idup
+
+
+RCString
+--------
+- opIndex
+- opIndexOpAssign
+- opSlice
+- wchar + dchar
+- nice range support
