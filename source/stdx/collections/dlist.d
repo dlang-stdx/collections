@@ -185,6 +185,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -366,6 +367,7 @@ public:
         }
     }
 
+    static if (is(T == int))
     nothrow pure @safe unittest
     {
         auto s = DList!int(1, 2, 3);
@@ -535,6 +537,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto dl = DList!int(24, 42);
@@ -563,6 +566,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         DList!int dl;
@@ -588,6 +592,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto dl = DList!int(1, 2, 3);
@@ -636,6 +641,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto a = [1, 2, 3];
@@ -688,6 +694,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto dl = DList!int([1, 2, 3]);
@@ -731,6 +738,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto idl = immutable DList!int([1, 2, 3]);
@@ -787,6 +795,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.typecons : Flag, Yes, No;
@@ -817,6 +826,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto a = [1, 2, 3];
@@ -872,6 +882,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -1018,6 +1029,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -1124,6 +1136,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -1176,6 +1189,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -1243,6 +1257,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -1289,6 +1304,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -1358,6 +1374,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;

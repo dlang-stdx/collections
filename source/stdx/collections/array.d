@@ -133,6 +133,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.experimental.allocator : theAllocator, processAllocator;
@@ -167,6 +168,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -343,6 +345,7 @@ public:
         destroyUnused();
     }
 
+    static if (is(T == int))
     nothrow pure @safe unittest
     {
         auto a = Array!int(1, 2, 3);
@@ -405,6 +408,7 @@ public:
     alias opDollar = length;
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto a = Array!int(1, 2, 3);
@@ -517,6 +521,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -635,6 +640,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -674,6 +680,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto a = Array!int(24, 42);
@@ -702,6 +709,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         Array!int a;
@@ -727,6 +735,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto a = Array!int(1, 2, 3);
@@ -754,6 +763,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto stuff = [1, 2, 3];
@@ -799,6 +809,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto ia = immutable Array!int([1, 2, 3]);
@@ -855,6 +866,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.typecons : Flag, Yes, No;
@@ -894,6 +906,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto stuff = [1, 2, 3];
@@ -950,6 +963,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -1013,6 +1027,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -1046,6 +1061,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto a = Array!int([1, 2, 3]);
@@ -1075,6 +1091,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto a = Array!int([1, 2, 3]);
@@ -1108,6 +1125,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto a = Array!int([1, 2, 3]);
@@ -1143,6 +1161,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto a = Array!int([1, 2, 3]);
@@ -1196,6 +1215,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -1252,6 +1272,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -1297,6 +1318,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -1324,6 +1346,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto arr1 = Array!int(1, 2);
@@ -1353,6 +1376,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto arr1 = Array!int(1, 2);

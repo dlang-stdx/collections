@@ -89,6 +89,7 @@ public:
     }
 
     ///
+    static if (is(K == int))
     @safe unittest
     {
         import std.experimental.allocator : theAllocator, processAllocator;
@@ -123,6 +124,7 @@ public:
     }
 
     ///
+    static if (is(K == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -178,6 +180,7 @@ public:
     }
 
     ///
+    static if (is(K == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -195,6 +198,7 @@ public:
         }
     }
 
+    static if (is(K == int))
     /*nothrow*/ pure @safe unittest
     {
         auto h = Hashtable!(int, int)([1 : 42]);
@@ -272,6 +276,7 @@ public:
     }
 
     ///
+    static if (is(K == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -309,6 +314,7 @@ public:
     }
 
     ///
+    static if (is(K == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
