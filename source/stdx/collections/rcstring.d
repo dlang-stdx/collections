@@ -633,11 +633,6 @@ public:
         assert(r1.equal("ab00ef"));
     }
 
-    // TODO: opIndex
-    // TODO: opIndexOpAssign
-    // TODO: opSlice
-    // TODO: wchar + dchar
-
     ///
     bool opCast(T : bool)()
     {
