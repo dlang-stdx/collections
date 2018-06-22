@@ -1425,18 +1425,25 @@ public:
     }
 
     ///
-    int opCmp()(auto ref typeof(this) rhs) const
+    int opCmp(U)(auto ref U rhs)
+    if (isInputRange!U && isImplicitlyConvertible!(ElementType!U, T))
     {
         import std.algorithm.comparison : min, equal;
         import std.math : sgn;
-        foreach (i; 0 .. min(length, rhs.length))
+        import std.range.primitives : empty, front, popFront;
+        auto r1 = this;
+        auto r2 = rhs;
+        for (;!r1.empty && !r2.empty; r1.popFront, r2.popFront)
         {
-            if (this.opIndex(i) < rhs[i])
+            if (r1.front < r2.front)
                 return -1;
-            else if (this.opIndex(i) > rhs[i])
+            else if (r1.front > r2.front)
                 return 1;
         }
-        return cast(int) sgn(length - rhs.length);
+        // arrays are equal until here, but it could be that one of them is shorter
+        if (r1.empty && r2.empty)
+            return 0;
+        return r1.empty ? -1 : 1;
     }
 
     ///
@@ -1447,6 +1454,22 @@ public:
         auto arr2 = Array!int(1, 2);
         auto arr3 = Array!int(2, 3);
         auto arr4 = Array!int(0, 3);
+        assert(arr1 <= arr2);
+        assert(arr2 >= arr1);
+        assert(arr1 < arr3);
+        assert(arr3 > arr1);
+        assert(arr4 < arr1);
+        assert(arr4 < arr3);
+        assert(arr3 > arr4);
+    }
+
+    static if (is(T == int))
+    @safe unittest
+    {
+        auto arr1 = Array!int(1, 2);
+        auto arr2 = [1, 2];
+        auto arr3 = Array!int(2, 3);
+        auto arr4 = [0, 3];
         assert(arr1 <= arr2);
         assert(arr2 >= arr1);
         assert(arr1 < arr3);

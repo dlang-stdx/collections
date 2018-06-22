@@ -28,6 +28,7 @@ version(unittest)
     import std.experimental.allocator : RCIAllocator, RCISharedAllocator,
            allocatorObject, sharedAllocatorObject;
     import std.algorithm.mutation : move;
+    import std.stdio;
 
     private alias SCAlloc = StatsCollector!(Mallocator, Options.bytesUsed);
 }
@@ -213,7 +214,7 @@ public:
         assert(s.equal("dlang"));
     }
 
-    bool empty() const
+    bool empty()() const
     {
         return _support.empty;
     }
@@ -305,9 +306,6 @@ public:
         return l;
     }
 
-    // TODO: support input ranges
-    // TODO: wchar + dchar
-
     ///
     @safe unittest
     {
@@ -335,6 +333,7 @@ public:
     auto opBinary(string op)(typeof(this) rhs)
     if (op == "in")
     {
+        // TODO
         import std.algorithm.searching : find;
         return this.by!char.find(rhs.by!char);
     }
@@ -342,6 +341,7 @@ public:
     auto opBinaryRight(string op)(string rhs)
     if (op == "in")
     {
+        // TODO
         import std.algorithm.searching : find;
         return rhs.find(this.by!char);
     }
@@ -405,6 +405,23 @@ public:
         assert(r1.equal("abcd"));
     }
 
+    typeof(this) opOpAssign(string op, R)(R r)
+    if (op == "~" && isSomeChar!(ElementType!R) && isInputRange!R && !isSomeString!R)
+    {
+        _support ~= RCString(r)._support;
+        return this;
+    }
+
+    ///
+    @safe unittest
+    {
+        import std.range : take;
+        import std.utf : byCodeUnit;
+        auto r1 = RCString("abc");
+        r1 ~= "foo".byCodeUnit.take(4);
+        assert(r1.equal("abcfoo"));
+    }
+
     ///
     bool opEquals()(auto ref typeof(this) rhs) const
     {
@@ -439,8 +456,27 @@ public:
         assert(RCString("") == "");
     }
 
+    bool opEquals(R)(R r)
+    if (isSomeChar!(ElementType!R) && isInputRange!R && !isSomeString!R)
+    {
+        import std.algorithm.comparison : equal;
+        return _support.equal(r);
+    }
+
     ///
-    int opCmp()(auto ref typeof(this) rhs) const
+    @safe unittest
+    {
+        import std.range : take;
+        import std.utf : byCodeUnit;
+        assert(RCString("abc") == "abc".byCodeUnit.take(3));
+        assert(RCString("abc") != "Abc".byCodeUnit.take(3));
+        assert(RCString("abc") != "abd".byCodeUnit.take(3));
+        assert(RCString("abc") != "".byCodeUnit.take(3));
+        assert(RCString("") == "".byCodeUnit.take(3));
+    }
+
+    ///
+    int opCmp()(auto ref typeof(this) rhs)
     {
         return _support.opCmp(rhs._support);
     }
@@ -456,6 +492,47 @@ public:
         assert(RCString("abc") > RCString(""));
         assert(RCString("") <= RCString(""));
         assert(RCString("") >= RCString(""));
+    }
+
+    int opCmp()(string rhs)
+    {
+        import std.string : representation;
+        return _support.opCmp(rhs.representation);
+    }
+
+    ///
+    @safe unittest
+    {
+        assert(RCString("abc") <= "abc");
+        assert(RCString("abc") >= "abc");
+        assert(RCString("abc") > "Abc");
+        assert(RCString("Abc") < "abc");
+        assert(RCString("abc") < "abd");
+        assert(RCString("abc") > "");
+        assert(RCString("") <= "");
+        assert(RCString("") >= "");
+    }
+
+    int opCmp(R)(R rhs)
+    if (isSomeChar!(ElementType!R) && isInputRange!R && !isSomeString!R)
+    {
+        import std.string : representation;
+        return _support.opCmp(rhs);
+    }
+
+    ///
+    @safe unittest
+    {
+        import std.range : take;
+        import std.utf : byCodeUnit;
+        assert(RCString("abc") <= "abc".byCodeUnit.take(3));
+        assert(RCString("abc") >= "abc".byCodeUnit.take(3));
+        assert(RCString("abc") > "Abc".byCodeUnit.take(3));
+        assert(RCString("Abc") < "abc".byCodeUnit.take(3));
+        assert(RCString("abc") < "abd".byCodeUnit.take(3));
+        assert(RCString("abc") > "".byCodeUnit.take(3));
+        assert(RCString("") <= "".byCodeUnit.take(3));
+        assert(RCString("") >= "".byCodeUnit.take(3));
     }
 
     //auto opSlice(size_t start, size_t end)
@@ -504,36 +581,12 @@ public:
         return by!char.writeln(rhs);
     }
 
-    // opIndex, opIndexAssign
-    // opSlice
-    // opCast / opCastbool
-    // opBinary
-    // opAssign
-    // opSliceAssign
-
-    // TODO: opCmp for strings
-
     string toString()
     {
         import std.array : array;
         import std.exception : assumeUnique;
         return by!char.array.assumeUnique;
     }
-
-    //auto opIndexOpAssign(string op, U)(U elem)
-    //{
-        //foreach (ref e; _payload)
-            //e = elem;
-        ////_payload[] = elem;
-        //return this;
-    //}
-
-    //@system unittest
-    //{
-        //auto rcs = RCString("abc");
-        //rcs[] = 'a';
-        //rcs.writeln;
-    //}
 
     ///
     auto opIndexAssign(char c, size_t pos)
@@ -563,7 +616,6 @@ public:
         assert(rc.equal("000"));
     }
 
-
     ///
     auto opSliceAssign(char c, size_t start, size_t end)
     {
@@ -579,6 +631,87 @@ public:
     }
 
     // dup, idup
+    // opIndex, opIndexAssign
+    // opIndexOpAssign
+    // opSlice
+    // opAssign
+    // TODO: wchar + dchar
+
+
+    ///
+    bool opCast(T : bool)()
+    {
+        return !empty;
+    }
+
+    ///
+    @safe unittest
+    {
+        assert(RCString("foo"));
+        assert(!RCString(""));
+    }
+
+    /// ditto
+    void opAssign()(RCString r)
+    {
+        _support = r._support;
+    }
+
+    /// ditto
+    void opAssign(R)(R r)
+    {
+        _support = RCString(r)._support;
+    }
+
+    ///
+    @safe unittest
+    {
+        auto rc = RCString("foo");
+        assert(rc.equal("foo"));
+        rc = RCString("bar1");
+        assert(rc.equal("bar1"));
+        rc = "bar2";
+        assert(rc.equal("bar2"));
+
+        import std.range : take;
+        import std.utf : byCodeUnit;
+        rc = "bar3".take(10).byCodeUnit;
+        assert(rc.equal("bar3"));
+    }
+
+    auto dup()()
+    {
+        return RCString(by!char);
+    }
+
+    ///
+    @safe unittest
+    {
+        auto s = RCString("foo");
+        s = RCString("bar");
+        assert(s.equal("bar"));
+        auto s2 = s.dup;
+        s2 = RCString("fefe");
+        assert(s.equal("bar"));
+        assert(s2.equal("fefe"));
+    }
+
+    auto idup()()
+    {
+        return RCString!(immutable(char))(by!char);
+    }
+
+    ///
+    @safe unittest
+    {
+        auto s = RCString("foo");
+        s = RCString("bar");
+        assert(s.equal("bar"));
+        auto s2 = s.dup;
+        s2 = RCString("fefe");
+        assert(s.equal("bar"));
+        assert(s2.equal("fefe"));
+    }
 }
 
 @safe unittest
