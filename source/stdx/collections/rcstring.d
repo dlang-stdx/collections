@@ -264,6 +264,32 @@ public:
     }
 
     ///
+    auto opBinary(string op)(typeof(this) rhs)
+    if (op == "in")
+    {
+        import std.algorithm.searching : find;
+        return this.by!char.find(rhs.by!char);
+    }
+
+    auto opBinaryRight(string op)(string rhs)
+    if (op == "in")
+    {
+        import std.algorithm.searching : find;
+        return rhs.find(this.by!char);
+    }
+
+    ///
+    @safe unittest
+    {
+        auto r1 = RCString("abc");
+        auto r2 = RCString("def");
+        auto rtext = RCString("abcdefgh");
+        //import std.stdio;
+        //(r1 in rtext).writeln;
+        //(r1 in rtext).writeln;
+    }
+
+    ///
     typeof(this) opOpAssign(string op)(typeof(this) rhs)
     if (op == "~")
     {
@@ -440,6 +466,49 @@ public:
         //rcs[] = 'a';
         //rcs.writeln;
     //}
+
+    ///
+    auto opIndexAssign(char c, size_t pos)
+    {
+        _support[pos] = cast(ubyte) c;
+    }
+
+    ///
+    @safe unittest
+    {
+        auto r1 = RCString("abcdef");
+        r1[2] = '0';
+        assert(r1.equal("ab0def"));
+    }
+
+    ///
+    auto opIndexAssign(char c)
+    {
+        _support[] = cast(ubyte) c;
+    }
+
+    ///
+    @safe unittest
+    {
+        auto rc = RCString("abc");
+        rc[] = '0';
+        assert(rc.equal("000"));
+    }
+
+
+    ///
+    auto opSliceAssign(char c, size_t start, size_t end)
+    {
+        _support[start .. end] = cast(ubyte) c;
+    }
+
+    ///
+    @safe unittest
+    {
+        auto r1 = RCString("abcdef");
+        r1[2..4] = '0';
+        assert(r1.equal("ab00ef"));
+    }
 
     // dup, idup
 }

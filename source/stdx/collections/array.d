@@ -1136,6 +1136,70 @@ public:
     }
 
     /**
+     Assign `elem` to all element in the array.
+
+     Returns:
+          a reference to itself
+
+     Params:
+          elem = an element that is implicitly convertible to `T`
+
+     Complexity: $(BIGOH n).
+     */
+    ref auto opIndexAssign(U)(U elem)
+    if (isImplicitlyConvertible!(U, T))
+    body
+    {
+        _payload[] = elem;
+        return this;
+    }
+
+    ///
+    static if (is(T == int))
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+        auto a = Array!int([1, 2, 3]);
+        a[] = 0;
+        assert(a.equal([0, 0, 0]));
+    }
+
+    /**
+    Assign `elem` to the element at `idx` in the array.
+    `idx` must be less than `length`.
+
+    Returns:
+         a reference to the element found at `idx`.
+
+    Params:
+         elem = an element that is implicitly convertible to `T`
+         indices = a positive integer
+
+    Complexity: $(BIGOH n).
+    */
+    auto opSliceAssign(U)(U elem, size_t start, size_t end)
+    if (isImplicitlyConvertible!(U, T))
+    in
+    {
+        assert(start <= end, "Array.opIndexAssign: Index out of bounds");
+        assert(end < length, "Array.opIndexAssign: Index out of bounds");
+    }
+    body
+    {
+        return _payload[start .. end] = elem;
+    }
+
+    ///
+    static if (is(T == int))
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+        auto a = Array!int([1, 2, 3, 4, 5, 6]);
+        a[1 .. 3] = 0;
+        assert(a.equal([1, 0, 0, 4, 5, 6]));
+    }
+
+    /**
      * Assign to the element at `idx` in the array the result of
      * $(D a[idx] op elem).
      * `idx` must be less than `length`.
