@@ -11,6 +11,7 @@ version(unittest)
     import std.experimental.allocator.building_blocks.stats_collector;
     import std.experimental.allocator : RCIAllocator, RCISharedAllocator,
            allocatorObject, sharedAllocatorObject;
+    import std.stdio;
 
     private alias SCAlloc = StatsCollector!(Mallocator, Options.bytesUsed);
 }
@@ -27,29 +28,15 @@ struct Array(T)
     import core.atomic : atomicOp;
     import std.algorithm.mutation : move;
 
+    package T[] _payload;
+    package Unqual!T[] _support;
+
 private:
-    T[] _payload;
-    Unqual!T[] _support;
 
     static enum double capacityFactor = 3.0 / 2;
     static enum initCapacity = 3;
 
-    AllocatorHandler _allocator;
-
-    /// Constructs the ouroboros allocator from allocator if the ouroboros
-    // allocator wasn't previously set
-    /*@nogc*/ nothrow pure @safe
-    bool setAllocator(A)(ref A allocator)
-    if (is(A == RCIAllocator) || is(A == RCISharedAllocator))
-    {
-        if (_allocator.isNull)
-        {
-            auto a = typeof(_allocator)(allocator);
-            move(a, _allocator);
-            return true;
-        }
-        return false;
-    }
+    mixin(allocatorHandler);
 
     @nogc nothrow pure @trusted
     void addRef(SupportQual, this Q)(SupportQual support)
@@ -147,6 +134,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.experimental.allocator : theAllocator, processAllocator;
@@ -181,6 +169,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -357,6 +346,7 @@ public:
         destroyUnused();
     }
 
+    static if (is(T == int))
     nothrow pure @safe unittest
     {
         auto a = Array!int(1, 2, 3);
@@ -419,6 +409,7 @@ public:
     alias opDollar = length;
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto a = Array!int(1, 2, 3);
@@ -442,6 +433,15 @@ public:
         _payload = cast(T[])(_support[slackFront .. len]);
     }
 
+    ///
+    static if (is(T == int))
+    @safe unittest
+    {
+        auto a = Array!int(1, 2, 3);
+        a.forceLength(2);
+        assert(a.length == 2);
+    }
+
     /**
      * Get the available capacity of the `array`; this is equal to `length` of
      * the array plus the available pre-allocated, free, space.
@@ -455,6 +455,15 @@ public:
     size_t capacity() const
     {
         return length + slackBack;
+    }
+
+    ///
+    static if (is(T == int))
+    @safe unittest
+    {
+        auto a = Array!int(1, 2, 3);
+        a.reserve(10);
+        assert(a.capacity == 10);
     }
 
     /**
@@ -482,10 +491,12 @@ public:
         // Will be optimized away, but the type sistem infers T's safety
         if (0) { T t = T.init; }
 
+        if (n <= capacity) { return; }
+
+        // TODO: why would we want to overwrite the user-defined allocator?
         auto a = threadAllocatorObject();
         setAllocator(a);
 
-        if (n <= capacity) { return; }
         if (_support && _allocator.opCmpPrefix!"=="(_support, 0))
         {
             void[] buf = _support;
@@ -503,7 +514,7 @@ public:
             }
             else
             {
-                //assert(0, "Array.reserve: Failed to expand array.");
+                assert(0, "Array.reserve: Failed to expand array.");
             }
         }
 
@@ -529,6 +540,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -572,7 +584,7 @@ public:
             scope(exit) writefln("Array.insert: end");
         }
 
-        // Will be optimized away, but the type sistem infers T's safety
+        // Will be optimized away, but the type system infers T's safety
         if (0) { T t = T.init; }
 
         auto a = threadAllocatorObject();
@@ -647,6 +659,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -686,6 +699,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto a = Array!int(24, 42);
@@ -714,6 +728,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         Array!int a;
@@ -739,6 +754,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto a = Array!int(1, 2, 3);
@@ -766,6 +782,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto stuff = [1, 2, 3];
@@ -811,6 +828,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto ia = immutable Array!int([1, 2, 3]);
@@ -867,6 +885,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.typecons : Flag, Yes, No;
@@ -906,6 +925,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto stuff = [1, 2, 3];
@@ -962,6 +982,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -1018,13 +1039,15 @@ public:
     {
         debug(CollectionArray)
         {
-            writefln("Array.opSlice(s, e): begin");
-            scope(exit) writefln("Array.opSlice(s, e): end");
+            scope(failure) assert(0, "Array.opSlice");
+            writefln("Array.opSlice(%d, %d): begin", start, end);
+            scope(exit) writefln("Array.opSlice(%d, %d): end", start, end);
         }
         return typeof(this)(_support, _payload[start .. end], _allocator);
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -1058,6 +1081,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto a = Array!int([1, 2, 3]);
@@ -1087,6 +1111,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto a = Array!int([1, 2, 3]);
@@ -1120,6 +1145,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto a = Array!int([1, 2, 3]);
@@ -1127,6 +1153,70 @@ public:
         assert(a[2] == 2);
         (a[2] = 3)++;
         assert(a[2] == 4);
+    }
+
+    /**
+     Assign `elem` to all element in the array.
+
+     Returns:
+          a reference to itself
+
+     Params:
+          elem = an element that is implicitly convertible to `T`
+
+     Complexity: $(BIGOH n).
+     */
+    ref auto opIndexAssign(U)(U elem)
+    if (isImplicitlyConvertible!(U, T))
+    body
+    {
+        _payload[] = elem;
+        return this;
+    }
+
+    ///
+    static if (is(T == int))
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+        auto a = Array!int([1, 2, 3]);
+        a[] = 0;
+        assert(a.equal([0, 0, 0]));
+    }
+
+    /**
+    Assign `elem` to the element at `idx` in the array.
+    `idx` must be less than `length`.
+
+    Returns:
+         a reference to the element found at `idx`.
+
+    Params:
+         elem = an element that is implicitly convertible to `T`
+         indices = a positive integer
+
+    Complexity: $(BIGOH n).
+    */
+    auto opSliceAssign(U)(U elem, size_t start, size_t end)
+    if (isImplicitlyConvertible!(U, T))
+    in
+    {
+        assert(start <= end, "Array.opSliceAssign: Index out of bounds");
+        assert(end < length, "Array.opSliceAssign: Index out of bounds");
+    }
+    body
+    {
+        return _payload[start .. end] = elem;
+    }
+
+    ///
+    static if (is(T == int))
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+        auto a = Array!int([1, 2, 3, 4, 5, 6]);
+        a[1 .. 3] = 0;
+        assert(a.equal([1, 0, 0, 4, 5, 6]));
     }
 
     /**
@@ -1155,6 +1245,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         auto a = Array!int([1, 2, 3]);
@@ -1208,6 +1299,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -1241,13 +1333,15 @@ public:
     {
         debug(CollectionArray)
         {
-            writefln("Array.opAssign: begin");
+            scope(failure) assert(0, "Array.opAssign");
+            writefln("Array.opAssign: begin: %s", rhs);
             scope(exit) writefln("Array.opAssign: end");
         }
 
         if (rhs._support !is null && _support is rhs._support)
         {
-            return this;
+            if (rhs._payload is _payload)
+                return this;
         }
 
         if (rhs._support !is null)
@@ -1264,6 +1358,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -1275,6 +1370,18 @@ public:
         assert(equal(a, [1, 2]));
         a.front = 0;
         assert(equal(a2, [0, 2]));
+    }
+
+    static if (is(T == int))
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+        auto arr = Array!int(1, 2, 3, 4, 5, 6);
+        auto arr1 = arr[1 .. $];
+        auto arr2 = arr[3 .. $];
+        arr1 = arr2;
+        assert(arr1.equal([4, 5, 6]));
+        assert(arr2.equal([4, 5, 6]));
     }
 
     /**
@@ -1309,6 +1416,7 @@ public:
     }
 
     ///
+    static if (is(T == int))
     @safe unittest
     {
         import std.algorithm.comparison : equal;
@@ -1326,6 +1434,83 @@ public:
         assert(equal(a, [1, 2, 3, 4, 5]));
         a2.front = 0;
         assert(equal(a, [1, 2, 3, 4, 5]));
+    }
+
+    ///
+    bool opEquals()(auto ref typeof(this) rhs) const
+    {
+        import std.algorithm.comparison : equal;
+        return _support.equal(rhs);
+    }
+
+    ///
+    static if (is(T == int))
+    @safe unittest
+    {
+        auto arr1 = Array!int(1, 2);
+        auto arr2 = Array!int(1, 2);
+        auto arr3 = Array!int(2, 3);
+        assert(arr1 == arr2);
+        assert(arr2 == arr1);
+        assert(arr1 != arr3);
+        assert(arr3 != arr1);
+        assert(arr2 != arr3);
+        assert(arr3 != arr2);
+    }
+
+    ///
+    int opCmp(U)(auto ref U rhs)
+    if (isInputRange!U && isImplicitlyConvertible!(ElementType!U, T))
+    {
+        import std.algorithm.comparison : min, equal;
+        import std.math : sgn;
+        import std.range.primitives : empty, front, popFront;
+        auto r1 = this;
+        auto r2 = rhs;
+        for (;!r1.empty && !r2.empty; r1.popFront, r2.popFront)
+        {
+            if (r1.front < r2.front)
+                return -1;
+            else if (r1.front > r2.front)
+                return 1;
+        }
+        // arrays are equal until here, but it could be that one of them is shorter
+        if (r1.empty && r2.empty)
+            return 0;
+        return r1.empty ? -1 : 1;
+    }
+
+    ///
+    static if (is(T == int))
+    @safe unittest
+    {
+        auto arr1 = Array!int(1, 2);
+        auto arr2 = Array!int(1, 2);
+        auto arr3 = Array!int(2, 3);
+        auto arr4 = Array!int(0, 3);
+        assert(arr1 <= arr2);
+        assert(arr2 >= arr1);
+        assert(arr1 < arr3);
+        assert(arr3 > arr1);
+        assert(arr4 < arr1);
+        assert(arr4 < arr3);
+        assert(arr3 > arr4);
+    }
+
+    static if (is(T == int))
+    @safe unittest
+    {
+        auto arr1 = Array!int(1, 2);
+        auto arr2 = [1, 2];
+        auto arr3 = Array!int(2, 3);
+        auto arr4 = [0, 3];
+        assert(arr1 <= arr2);
+        assert(arr2 >= arr1);
+        assert(arr1 < arr3);
+        assert(arr3 > arr1);
+        assert(arr4 < arr1);
+        assert(arr4 < arr3);
+        assert(arr3 > arr4);
     }
 }
 
