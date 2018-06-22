@@ -16,7 +16,8 @@ module stdx.collections.rcstring;
 
 import stdx.collections.common;
 import stdx.collections.array;
-import std.traits : isSomeChar;
+import std.range.primitives : isInputRange, ElementType, hasLength;
+import std.traits : isSomeChar, isSomeString;
 
 debug(CollectionRCString) import std.stdio;
 
@@ -161,6 +162,7 @@ public:
         auto b = RCString(theAllocator, ['1', '2', '3']);
     }
 
+    ///
     this(this Q)(string s)
     {
         import std.string : representation;
@@ -174,11 +176,41 @@ public:
         }
     }
 
+    ///
     @safe unittest
     {
         import std.algorithm.comparison : equal;
         auto s = RCString("dlang");
         assert(s.by!char.equal("dlang"));
+    }
+
+    ///
+    this(this Q, R)(R r)
+    if (isInputRange!R && isSomeChar!(ElementType!R) && !isSomeString!R)
+    {
+        static if (is(Q == immutable) || is(Q == const))
+        {
+            this(processAllocatorObject());
+        }
+        else
+        {
+            this(threadAllocatorObject());
+        }
+        static if (hasLength!R)
+            _support.reserve(r.length);
+        foreach (e; r)
+        {
+            _support ~= cast(ubyte) e;
+        }
+    }
+
+    ///
+    @safe unittest
+    {
+        import std.range : take;
+        import std.utf : byCodeUnit;
+        auto s = RCString("dlang".byCodeUnit.take(10));
+        assert(s.equal("dlang"));
     }
 
     bool empty() const
@@ -231,6 +263,7 @@ public:
         return s;
     }
 
+    /// ditto
     typeof(this) opBinary(string op, C)(C c)
     if (op == "~" && isSomeChar!C)
     {
@@ -241,11 +274,35 @@ public:
 
     /// ditto
     typeof(this) opBinaryRight(string op, C)(C c)
-    if (op == "~")
+    if (op == "~" && isSomeChar!C)
     {
         RCString rcs = this;
         rcs._support.insert(0, cast(ubyte) c);
         return rcs;
+    }
+
+    /// ditto
+    typeof(this) opBinary(string op, R)(R r)
+    if (op == "~" && isInputRange!R && isSomeChar!(ElementType!R) && !isSomeString!R)
+    {
+        RCString s = this;
+        static if (hasLength!R)
+            s._support.reserve(s._support.length + r.length);
+        foreach (el; r)
+        {
+            s._support ~= cast(ubyte) el;
+        }
+        return s;
+    }
+
+    /// ditto
+    typeof(this) opBinaryRight(string op, R)(R lhs)
+    if (op == "~" && isInputRange!R && isSomeChar!(ElementType!R) && !isSomeString!R)
+    {
+        auto l = RCString(lhs);
+        RCString rcs = this;
+        l._support ~= rcs._support;
+        return l;
     }
 
     // TODO: support input ranges
@@ -261,6 +318,17 @@ public:
         assert(("abc" ~ r2).equal("abcdef"));
         assert((r1 ~ 'd').equal("abcd"));
         assert(('a' ~ r2).equal("adef"));
+    }
+
+    ///
+    @safe unittest
+    {
+        import std.range : take;
+        import std.utf : byCodeUnit;
+        auto r1 = RCString("abc");
+        auto r2 = "def".byCodeUnit.take(3);
+        assert((r1 ~ r2).equal("abcdef"));
+        assert((r2 ~ r1).equal("defabc"));
     }
 
     ///
