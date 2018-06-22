@@ -1372,6 +1372,18 @@ public:
         assert(equal(a2, [0, 2]));
     }
 
+    static if (is(T == int))
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+        auto arr = Array!int(1, 2, 3, 4, 5, 6);
+        auto arr1 = arr[1 .. $];
+        auto arr2 = arr[3 .. $];
+        arr1 = arr2;
+        assert(arr1.equal([4, 5, 6]));
+        assert(arr2.equal([4, 5, 6]));
+    }
+
     /**
      * Append the elements of `rhs` at the end of the array.
      *
