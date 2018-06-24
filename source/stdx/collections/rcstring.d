@@ -592,34 +592,6 @@ public:
     }
 
     ///
-    auto opIndexAssign(char c, size_t pos)
-    {
-        _support[pos] = cast(ubyte) c;
-    }
-
-    ///
-    @safe unittest
-    {
-        auto r1 = RCString("abcdef");
-        r1[2] = '0';
-        assert(r1.equal("ab0def"));
-    }
-
-    ///
-    auto opIndexAssign(char c)
-    {
-        _support[] = cast(ubyte) c;
-    }
-
-    ///
-    @safe unittest
-    {
-        auto rc = RCString("abc");
-        rc[] = '0';
-        assert(rc.equal("000"));
-    }
-
-    ///
     auto opSliceAssign(char c, size_t start, size_t end)
     {
         _support[start .. end] = cast(ubyte) c;
@@ -708,6 +680,60 @@ public:
         s2 = RCString("fefe");
         assert(s.equal("bar"));
         assert(s2.equal("fefe"));
+    }
+
+    ///
+    auto opIndex(size_t pos)
+    in
+    {
+        assert(pos < _support.length, "Invalid position.");
+    }
+    body
+    {
+        return _support[pos];
+    }
+
+    ///
+    @safe unittest
+    {
+        auto s = RCString("bar");
+        assert(s[0] == 'b');
+        assert(s[1] == 'a');
+        assert(s[2] == 'r');
+    }
+
+    ///
+    auto opIndexAssign(char el, size_t pos)
+    in
+    {
+        assert(pos < _support.length, "Invalid position.");
+    }
+    body
+    {
+        return _support[pos] = cast(ubyte) el;
+    }
+
+    ///
+    @safe unittest
+    {
+        auto s = RCString("bar");
+        assert(s[0] == 'b');
+        s[0] = 'f';
+        assert(s.equal("far"));
+    }
+
+    ///
+    auto opIndexAssign(char c)
+    {
+        _support[] = cast(ubyte) c;
+    }
+
+    ///
+    @safe unittest
+    {
+        auto rc = RCString("abc");
+        rc[] = '0';
+        assert(rc.equal("000"));
     }
 }
 
