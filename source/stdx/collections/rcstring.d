@@ -3,7 +3,7 @@
 $(REF Array, std,experimental,collections) of `ubyte`s.
 By default, `RCString` is not a range. The `.by` helpers can be used to specify
 the iteration mode.
-RC-String internally stores the string as UTF-8.
+RCString internally stores the string as UTF-8 $(REF Array, stdx,collections,array).
 
 $(UL
     $(LI `str.by!char` - iterates over individual `char` characters. No auto-decoding is done.)
@@ -64,13 +64,9 @@ public:
             scope(exit) writefln("RCString.ctor: end");
         }
         static if (is(Q == immutable) || is(Q == const))
-        {
             _allocator = immutable AllocatorHandler(allocator);
-        }
         else
-        {
             setAllocator(allocator);
-        }
     }
 
     ///
@@ -84,15 +80,19 @@ public:
     }
 
     /**
-     Constructs a qualified rcstring out of an `ubyte` array.
-     Because no allocator was provided, the rcstring will use the
-     $(REF GCAllocator, std,experimental,allocator,gc_allocator).
+    Constructs a qualified rcstring out of a number of bytes
+    that will use the provided allocator object.
+    For `immutable` objects, a `RCISharedAllocator` must be supplied.
+    If no allocator is passed, the default allocator will be used.
 
-     Params:
-          bytes = a variable number of bytes, either in the form of a
-                   list or as a built-in array
+    Params:
+         allocator = a $(REF RCIAllocator, std,experimental,allocator) or
+                     $(REF RCISharedAllocator, std,experimental,allocator)
+                     allocator object
+         bytes = a variable number of bytes, either in the form of a
+                  list or as a built-in RCString
 
-     Complexity: $(BIGOH m), where `m` is the number of bytes.
+    Complexity: $(BIGOH m), where `m` is the number of bytes.
     */
     this()(ubyte[] bytes...)
     {
@@ -112,20 +112,7 @@ public:
         auto c = const RCString('1', '2', '3');
     }
 
-    /**
-     Constructs a qualified rcstring out of a number of bytes
-     that will use the provided allocator object.
-     For `immutable` objects, a `RCISharedAllocator` must be supplied.
-
-     Params:
-          allocator = a $(REF RCIAllocator, std,experimental,allocator) or
-                      $(REF RCISharedAllocator, std,experimental,allocator)
-                      allocator object
-          bytes = a variable number of bytes, either in the form of a
-                   list or as a built-in RCString
-
-     Complexity: $(BIGOH m), where `m` is the number of bytes.
-    */
+    /// ditto
     this(A, this Q)(A allocator, ubyte[] bytes...)
     if (!is(Q == shared)
         && (is(A == RCISharedAllocator) || !is(Q == immutable))
@@ -147,7 +134,20 @@ public:
         auto b = RCString(theAllocator, ['1', '2', '3']);
     }
 
-    /// ditto
+    /**
+    Constructs a qualified rcstring out of a string
+    that will use the provided allocator object.
+    For `immutable` objects, a `RCISharedAllocator` must be supplied.
+    If no allocator is passed, the default allocator will be used.
+
+    Params:
+         allocator = a $(REF RCIAllocator, std,experimental,allocator) or
+                     $(REF RCISharedAllocator, std,experimental,allocator)
+                     allocator object
+         s = input string
+
+    Complexity: $(BIGOH m), where `m` is the number of bytes of the input string.
+    */
     this()(string s)
     {
         import std.string : representation;
@@ -192,7 +192,20 @@ public:
         assert(s.by!char.equal("dlang"));
     }
 
-    /// ditto
+    /**
+    Constructs a qualified rcstring out of an input range
+    that will use the provided allocator object.
+    For `immutable` objects, a `RCISharedAllocator` must be supplied.
+    If no allocator is passed, the default allocator will be used.
+
+    Params:
+         allocator = a $(REF RCIAllocator, std,experimental,allocator) or
+                     $(REF RCISharedAllocator, std,experimental,allocator)
+                     allocator object
+         r = input range
+
+    Complexity: $(BIGOH n), where `n` is the number of elemtns of the input range.
+    */
     this(this Q, A, R)(A allocator, R r)
     if (!is(Q == shared)
         && (is(A == RCISharedAllocator) || !is(Q == immutable))
