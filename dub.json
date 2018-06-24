@@ -12,7 +12,7 @@
             "--min-protection=Protected"
     ],
     "-ddoxTool": "scod",
-    "dependenceies": {
-        "phobos:allocator": "~master"
+    "dependencies": {
+        "Phobos:allocator": "~master"
     }
 }
