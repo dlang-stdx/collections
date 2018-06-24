@@ -158,14 +158,7 @@ public:
     this(U, this Q)(U[] values...)
     if (isImplicitlyConvertible!(U, T))
     {
-        static if (is(Q == immutable) || is(Q == const))
-        {
-            this(processAllocatorObject(), values);
-        }
-        else
-        {
-            this(threadAllocatorObject(), values);
-        }
+        this(defaultAllocator!(typeof(this)), values);
     }
 
     ///
@@ -247,14 +240,7 @@ public:
         && isImplicitlyConvertible!(ElementType!Stuff, T)
         && !is(Stuff == T[]))
     {
-        static if (is(Q == immutable) || is(Q == const))
-        {
-            this(processAllocatorObject(), stuff);
-        }
-        else
-        {
-            this(threadAllocatorObject(), stuff);
-        }
+        this(defaultAllocator!(typeof(this)), stuff);
     }
 
     /**

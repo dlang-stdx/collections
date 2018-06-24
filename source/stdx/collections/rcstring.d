@@ -94,21 +94,9 @@ public:
 
      Complexity: $(BIGOH m), where `m` is the number of bytes.
     */
-    this(this Q)(ubyte[] bytes...)
+    this()(ubyte[] bytes...)
     {
-        this(defaultAllocator, bytes);
-    }
-
-    private auto defaultAllocator(this Q)()
-    {
-        static if (is(Q == immutable) || is(Q == const))
-        {
-            return processAllocatorObject();
-        }
-        else
-        {
-            return threadAllocatorObject();
-        }
+        this(defaultAllocator!(typeof(this)), bytes);
     }
 
     ///
@@ -144,8 +132,6 @@ public:
         && (is(A == RCIAllocator) || is(A == RCISharedAllocator)))
     {
         this(allocator);
-        static if (is(Q == immutable) || is(Q == const))
-            "_support".writeln;
         _support = typeof(_support)(allocator, bytes);
     }
 
@@ -162,13 +148,10 @@ public:
     }
 
     /// ditto
-    this(this Q)(string s)
+    this()(string s)
     {
         import std.string : representation;
-        static if (is(Q == immutable) || is(Q == const))
-            this(processAllocatorObject(), s.dup.representation);
-        else
-            this(threadAllocatorObject(), s.dup.representation);
+        this(defaultAllocator!(typeof(this)), s.dup.representation);
     }
 
     ///
@@ -227,10 +210,7 @@ public:
     this(this Q, R)(R r)
     if (isInputRange!R && isSomeChar!(ElementType!R) && !isSomeString!R)
     {
-        static if (is(Q == immutable) || is(Q == const))
-            this(processAllocatorObject(), r);
-        else
-            this(threadAllocatorObject(), r);
+        this(defaultAllocator!(typeof(this)), r);
     }
 
     ///
