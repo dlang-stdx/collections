@@ -212,10 +212,11 @@ public:
         && (is(A == RCIAllocator) || is(A == RCISharedAllocator))
         && isInputRange!R && isSomeChar!(ElementType!R) && !isSomeString!R)
     {
+        import std.utf : byChar;
         this(allocator);
         static if (hasLength!R)
             _support.reserve(r.length);
-        foreach (e; r)
+        foreach (e; r.byChar)
             _support ~= cast(ubyte) e;
     }
 
