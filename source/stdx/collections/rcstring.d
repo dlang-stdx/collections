@@ -770,11 +770,20 @@ public:
     }
 
     ///
+    auto toHash()
+    {
+        // will be safe with 2.082
+        return () @trusted { return _support.hashOf; }();
+    }
+
+    ///
     @safe unittest
     {
         auto rc = RCString("abc");
-        rc[] = '0';
-        assert(rc.equal("000"));
+        assert(rc.toHash == RCString("abc").toHash);
+        rc ~= 'd';
+        assert(rc.toHash == RCString("abcd").toHash);
+        assert(RCString().toHash == RCString().toHash);
     }
 }
 
