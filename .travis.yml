@@ -3,10 +3,10 @@ os:
     - linux
 language: d
 d:
-    - ldc
+  - dmd
 matrix:
   include:
-    - d: dmd-nightly
+    - d: dmd
       script:
         - dub test --compiler=$DC --build=unittest-cov
         #- dub build -b ddox

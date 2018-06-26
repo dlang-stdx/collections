@@ -23,9 +23,9 @@ debug(CollectionRCString) import std.stdio;
 
 version(unittest)
 {
-    import std.experimental.allocator.mallocator;
-    import std.experimental.allocator.building_blocks.stats_collector;
-    import std.experimental.allocator : RCIAllocator, RCISharedAllocator,
+    import stdx.allocator.mallocator;
+    import stdx.allocator.building_blocks.stats_collector;
+    import stdx.allocator : RCIAllocator, RCISharedAllocator,
            allocatorObject, sharedAllocatorObject;
     import std.algorithm.mutation : move;
     import std.stdio;
@@ -76,7 +76,7 @@ public:
     ///
     @safe unittest
     {
-        import std.experimental.allocator : theAllocator, processAllocator;
+        import stdx.allocator : theAllocator, processAllocator;
 
         auto a = RCString(theAllocator);
         auto ca = const RCString(processAllocator);
@@ -154,7 +154,7 @@ public:
     ///
     @safe unittest
     {
-        import std.experimental.allocator : theAllocator, processAllocator;
+        import stdx.allocator : theAllocator, processAllocator;
 
         // Create a list from a list of ints
         auto a = RCString(theAllocator, '1', '2', '3');

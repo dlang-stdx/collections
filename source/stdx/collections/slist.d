@@ -7,9 +7,9 @@ debug(CollectionSList) import std.stdio;
 
 version(unittest)
 {
-    import std.experimental.allocator.mallocator;
-    import std.experimental.allocator.building_blocks.stats_collector;
-    import std.experimental.allocator : RCIAllocator, RCISharedAllocator,
+    import stdx.allocator.mallocator;
+    import stdx.allocator.building_blocks.stats_collector;
+    import stdx.allocator : RCIAllocator, RCISharedAllocator,
            allocatorObject, sharedAllocatorObject;
 
     private alias SCAlloc = StatsCollector!(Mallocator, Options.bytesUsed);
@@ -18,9 +18,9 @@ version(unittest)
 ///
 struct SList(T)
 {
-    import std.experimental.allocator : RCIAllocator, RCISharedAllocator,
+    import stdx.allocator : RCIAllocator, RCISharedAllocator,
            theAllocator, processAllocator, make, dispose, stateSize;
-    import std.experimental.allocator.building_blocks.affix_allocator;
+    import stdx.allocator.building_blocks.affix_allocator;
     import std.traits : isImplicitlyConvertible;
     import std.range.primitives : isInputRange, ElementType;
     import std.variant : Algebraic;
@@ -1189,7 +1189,7 @@ void testConstness(RCISharedAllocator allocator)
 @safe unittest
 {
     import std.conv;
-    import std.experimental.allocator : processAllocator;
+    import stdx.allocator : processAllocator;
     SCAlloc statsCollectorAlloc;
     {
         // TODO: StatsCollector need to be made shareable
@@ -1454,7 +1454,7 @@ void testWithStruct(RCIAllocator allocator, RCISharedAllocator sharedAlloc)
 @safe unittest
 {
     import std.conv;
-    import std.experimental.allocator : processAllocator;
+    import stdx.allocator : processAllocator;
     SCAlloc statsCollectorAlloc;
     {
         auto _allocator = (() @trusted => allocatorObject(&statsCollectorAlloc))();

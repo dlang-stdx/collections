@@ -7,9 +7,9 @@ debug(CollectionHashtable) import std.stdio;
 
 version(unittest)
 {
-    import std.experimental.allocator.mallocator;
-    import std.experimental.allocator.building_blocks.stats_collector;
-    import std.experimental.allocator : allocatorObject,
+    import stdx.allocator.mallocator;
+    import stdx.allocator.building_blocks.stats_collector;
+    import stdx.allocator : allocatorObject,
            RCIAllocator, RCISharedAllocator;
 
     private alias SCAlloc = StatsCollector!(Mallocator, Options.bytesUsed);
@@ -18,7 +18,7 @@ version(unittest)
 ///
 struct Hashtable(K, V)
 {
-    import std.experimental.allocator : RCIAllocator, RCISharedAllocator;
+    import stdx.allocator : RCIAllocator, RCISharedAllocator;
     import std.traits : isImplicitlyConvertible;
     import std.typecons : Tuple, Nullable;
     import std.algorithm.mutation : move;
@@ -92,7 +92,7 @@ public:
     static if (is(K == int))
     @safe unittest
     {
-        import std.experimental.allocator : theAllocator, processAllocator;
+        import stdx.allocator : theAllocator, processAllocator;
 
         auto h = Hashtable!(int, int)(theAllocator);
         auto ch = const Hashtable!(int, int)(processAllocator);

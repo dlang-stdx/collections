@@ -11,5 +11,8 @@
             "--unittest-examples",
             "--min-protection=Protected"
     ],
-    "-ddoxTool": "scod"
+    "-ddoxTool": "scod",
+    "dependencies": {
+        "phobos:allocator": "~master"
+    }
 }

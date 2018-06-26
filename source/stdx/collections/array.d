@@ -7,9 +7,9 @@ debug(CollectionArray) import std.stdio;
 
 version(unittest)
 {
-    import std.experimental.allocator.mallocator;
-    import std.experimental.allocator.building_blocks.stats_collector;
-    import std.experimental.allocator : RCIAllocator, RCISharedAllocator,
+    import stdx.allocator.mallocator;
+    import stdx.allocator.building_blocks.stats_collector;
+    import stdx.allocator : RCIAllocator, RCISharedAllocator,
            allocatorObject, sharedAllocatorObject;
     import std.stdio;
 
@@ -19,9 +19,9 @@ version(unittest)
 ///
 struct Array(T)
 {
-    import std.experimental.allocator : RCIAllocator, RCISharedAllocator,
+    import stdx.allocator : RCIAllocator, RCISharedAllocator,
            make, dispose, stateSize;
-    import std.experimental.allocator.building_blocks.affix_allocator;
+    import stdx.allocator.building_blocks.affix_allocator;
     import std.traits : isImplicitlyConvertible, Unqual, isArray;
     import std.range.primitives : isInputRange, isInfinite, ElementType, hasLength;
     import std.conv : emplace;
@@ -137,7 +137,7 @@ public:
     static if (is(T == int))
     @safe unittest
     {
-        import std.experimental.allocator : theAllocator, processAllocator;
+        import stdx.allocator : theAllocator, processAllocator;
 
         auto a = Array!int(theAllocator);
         auto ca = const Array!int(processAllocator);
@@ -1782,7 +1782,7 @@ void testConstness(RCISharedAllocator allocator)
 @safe unittest
 {
     import std.conv;
-    import std.experimental.allocator : processAllocator;
+    import stdx.allocator : processAllocator;
     SCAlloc statsCollectorAlloc;
     // TODO: StatsCollector needs to be made shareable
     //auto _allocator = sharedAllocatorObject(&statsCollectorAlloc);
@@ -1819,7 +1819,7 @@ void testWithStruct(RCIAllocator allocator, RCISharedAllocator sharedAlloc)
 @safe unittest
 {
     import std.conv;
-    import std.experimental.allocator : processAllocator;
+    import stdx.allocator : processAllocator;
     SCAlloc statsCollectorAlloc;
     {
         auto _allocator = (() @trusted => allocatorObject(&statsCollectorAlloc))();
