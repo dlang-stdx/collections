@@ -13,13 +13,13 @@ if (isInputRange!Collection)
 
 package static auto threadAllocatorObject()
 {
-    import std.experimental.allocator : RCIAllocator;
+    import stdx.allocator : RCIAllocator;
 
     static @nogc nothrow
     RCIAllocator wrapAllocatorObject()
     {
-        import std.experimental.allocator.gc_allocator : GCAllocator;
-        import std.experimental.allocator : allocatorObject;
+        import stdx.allocator.gc_allocator : GCAllocator;
+        import stdx.allocator : allocatorObject;
 
         return allocatorObject(GCAllocator.instance);
     }
@@ -30,13 +30,13 @@ package static auto threadAllocatorObject()
 
 package static auto processAllocatorObject()
 {
-    import std.experimental.allocator : RCISharedAllocator;
+    import stdx.allocator : RCISharedAllocator;
 
     static @nogc nothrow
     RCISharedAllocator wrapAllocatorObject()
     {
-        import std.experimental.allocator.gc_allocator : GCAllocator;
-        import std.experimental.allocator : sharedAllocatorObject;
+        import stdx.allocator.gc_allocator : GCAllocator;
+        import stdx.allocator : sharedAllocatorObject;
 
         return sharedAllocatorObject(GCAllocator.instance);
     }
@@ -47,9 +47,9 @@ package static auto processAllocatorObject()
 
 package struct AllocatorHandler
 {
-    import std.experimental.allocator : RCIAllocator, RCISharedAllocator,
+    import stdx.allocator : RCIAllocator, RCISharedAllocator,
            dispose, stateSize, theAllocator, processAllocator;
-    import std.experimental.allocator.building_blocks.affix_allocator;
+    import stdx.allocator.building_blocks.affix_allocator;
     import std.conv : emplace;
     import core.atomic : atomicOp;
     import std.algorithm.mutation : move;
@@ -403,14 +403,14 @@ version(unittest)
 
     package static struct Impure
     {
-        import std.experimental.allocator : RCIAllocator, theAllocator;
+        import stdx.allocator : RCIAllocator, theAllocator;
         RCIAllocator _a;
         @safe this(int id) { _a = theAllocator; }
     }
 
     package static struct ImpureDtor
     {
-        import std.experimental.allocator : RCIAllocator, theAllocator;
+        import stdx.allocator : RCIAllocator, theAllocator;
         RCIAllocator _a;
         @nogc nothrow pure @safe this(int x) {}
         @safe ~this() { _a = theAllocator; }
@@ -434,9 +434,9 @@ version(unittest)
 
 unittest
 {
-    import std.experimental.allocator.mallocator;
-    import std.experimental.allocator.building_blocks.stats_collector;
-    import std.experimental.allocator : RCIAllocator, RCISharedAllocator,
+    import stdx.allocator.mallocator;
+    import stdx.allocator.building_blocks.stats_collector;
+    import stdx.allocator : RCIAllocator, RCISharedAllocator,
            allocatorObject, sharedAllocatorObject, processAllocator, theAllocator;
     import std.conv : to;
     import std.stdio;
@@ -492,7 +492,7 @@ unittest
 
 unittest
 {
-    import std.experimental.allocator : RCIAllocator, RCISharedAllocator,
+    import stdx.allocator : RCIAllocator, RCISharedAllocator,
            allocatorObject, sharedAllocatorObject, processAllocator, theAllocator;
     import std.stdio;
 
