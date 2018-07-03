@@ -11,7 +11,7 @@ if (isInputRange!Collection)
     return collection;
 }
 
-package static auto threadAllocatorObject()
+package auto threadAllocatorObject()
 {
     import std.experimental.allocator : RCIAllocator;
 
@@ -28,7 +28,7 @@ package static auto threadAllocatorObject()
     return fn();
 }
 
-package static auto processAllocatorObject()
+package auto processAllocatorObject()
 {
     import std.experimental.allocator : RCISharedAllocator;
 
@@ -43,6 +43,15 @@ package static auto processAllocatorObject()
     auto fn = (() @trusted =>
             cast(RCISharedAllocator function() @nogc nothrow pure @safe)(&wrapAllocatorObject))();
     return fn();
+}
+
+// Returns an instance of the default allocator
+package auto defaultAllocator(Q)()
+{
+    static if (is(Q == immutable) || is(Q == const))
+        return processAllocatorObject();
+    else
+        return threadAllocatorObject();
 }
 
 package struct AllocatorHandler

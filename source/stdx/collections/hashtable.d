@@ -113,14 +113,7 @@ public:
     this(U, this Q)(U assocArr)
     if (is(U == Value[Key], Value : V, Key : K))
     {
-        static if (is(Q == immutable) || is(Q == const))
-        {
-            this(processAllocatorObject(), assocArr);
-        }
-        else
-        {
-            this(threadAllocatorObject(), assocArr);
-        }
+        this(defaultAllocator!(typeof(this)), assocArr);
     }
 
     ///

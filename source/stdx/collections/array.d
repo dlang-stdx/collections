@@ -158,14 +158,7 @@ public:
     this(U, this Q)(U[] values...)
     if (isImplicitlyConvertible!(U, T))
     {
-        static if (is(Q == immutable) || is(Q == const))
-        {
-            this(processAllocatorObject(), values);
-        }
-        else
-        {
-            this(threadAllocatorObject(), values);
-        }
+        this(defaultAllocator!(typeof(this)), values);
     }
 
     ///
@@ -247,14 +240,7 @@ public:
         && isImplicitlyConvertible!(ElementType!Stuff, T)
         && !is(Stuff == T[]))
     {
-        static if (is(Q == immutable) || is(Q == const))
-        {
-            this(processAllocatorObject(), stuff);
-        }
-        else
-        {
-            this(threadAllocatorObject(), stuff);
-        }
+        this(defaultAllocator!(typeof(this)), stuff);
     }
 
     /**
@@ -1511,6 +1497,23 @@ public:
         assert(arr4 < arr1);
         assert(arr4 < arr3);
         assert(arr3 > arr4);
+    }
+
+    ///
+    auto toHash()
+    {
+        // will be safe with 2.082
+        return () @trusted { return _support.hashOf; }();
+    }
+
+    ///
+    @safe unittest
+    {
+        auto arr1 = Array!int(1, 2);
+        assert(arr1.toHash == Array!int(1, 2).toHash);
+        arr1 ~= 3;
+        assert(arr1.toHash == Array!int(1, 2, 3).toHash);
+        assert(Array!int().toHash == Array!int().toHash);
     }
 }
 

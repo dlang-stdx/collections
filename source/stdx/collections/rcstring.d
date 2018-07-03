@@ -3,7 +3,7 @@
 $(REF Array, std,experimental,collections) of `ubyte`s.
 By default, `RCString` is not a range. The `.by` helpers can be used to specify
 the iteration mode.
-RC-String internally stores the string as UTF-8.
+RCString internally stores the string as UTF-8 $(REF Array, stdx,collections,array).
 
 $(UL
     $(LI `str.by!char` - iterates over individual `char` characters. No auto-decoding is done.)
@@ -42,17 +42,17 @@ private:
 public:
 
     /**
-     * Constructs a qualified rcstring that will use the provided
-     * allocator object. For `immutable` objects, a `RCISharedAllocator` must
-     * be supplied.
-     *
-     * Params:
-     *      allocator = a $(REF RCIAllocator, std,experimental,allocator) or
-     *                  $(REF RCISharedAllocator, std,experimental,allocator)
-     *                  allocator object
-     *
-     * Complexity: $(BIGOH 1)
-     */
+     Constructs a qualified rcstring that will use the provided
+     allocator object. For `immutable` objects, a `RCISharedAllocator` must
+     be supplied.
+
+     Params:
+          allocator = a $(REF RCIAllocator, std,experimental,allocator) or
+                      $(REF RCISharedAllocator, std,experimental,allocator)
+                      allocator object
+
+     Complexity: $(BIGOH 1)
+    */
     this(A, this Q)(A allocator)
     if (!is(Q == shared)
         && (is(A == RCISharedAllocator) || !is(Q == immutable))
@@ -64,13 +64,9 @@ public:
             scope(exit) writefln("RCString.ctor: end");
         }
         static if (is(Q == immutable) || is(Q == const))
-        {
-            this(allocator, null);
-        }
+            _allocator = immutable AllocatorHandler(allocator);
         else
-        {
             setAllocator(allocator);
-        }
     }
 
     ///
@@ -84,26 +80,23 @@ public:
     }
 
     /**
-     * Constructs a qualified rcstring out of an `ubyte` array.
-     * Because no allocator was provided, the rcstring will use the
-     * $(REF GCAllocator, std,experimental,allocator,gc_allocator).
-     *
-     * Params:
-     *      bytes = a variable number of bytes, either in the form of a
-     *               list or as a built-in array
-     *
-     * Complexity: $(BIGOH m), where `m` is the number of bytes.
-     */
-    this(this Q)(ubyte[] bytes...)
+    Constructs a qualified rcstring out of a number of bytes
+    that will use the provided allocator object.
+    For `immutable` objects, a `RCISharedAllocator` must be supplied.
+    If no allocator is passed, the default allocator will be used.
+
+    Params:
+         allocator = a $(REF RCIAllocator, std,experimental,allocator) or
+                     $(REF RCISharedAllocator, std,experimental,allocator)
+                     allocator object
+         bytes = a variable number of bytes, either in the form of a
+                  list or as a built-in RCString
+
+    Complexity: $(BIGOH m), where `m` is the number of bytes.
+    */
+    this()(ubyte[] bytes...)
     {
-        static if (is(Q == immutable) || is(Q == const))
-        {
-            this(processAllocatorObject(), bytes);
-        }
-        else
-        {
-            this(threadAllocatorObject(), bytes);
-        }
+        this(defaultAllocator!(typeof(this)), bytes);
     }
 
     ///
@@ -114,40 +107,18 @@ public:
 
         // Create a list from an array of bytes
         auto b = RCString(['1', '2', '3']);
+
+        // Create a const list from a list of bytes
+        auto c = const RCString('1', '2', '3');
     }
 
-    /**
-     * Constructs a qualified rcstring out of a number of bytes
-     * that will use the provided allocator object.
-     * For `immutable` objects, a `RCISharedAllocator` must be supplied.
-     *
-     * Params:
-     *      allocator = a $(REF RCIAllocator, std,experimental,allocator) or
-     *                  $(REF RCISharedAllocator, std,experimental,allocator)
-     *                  allocator object
-     *      bytes = a variable number of bytes, either in the form of a
-     *               list or as a built-in RCString
-     *
-     * Complexity: $(BIGOH m), where `m` is the number of bytes.
-     */
+    /// ditto
     this(A, this Q)(A allocator, ubyte[] bytes...)
     if (!is(Q == shared)
         && (is(A == RCISharedAllocator) || !is(Q == immutable))
         && (is(A == RCIAllocator) || is(A == RCISharedAllocator)))
     {
-        debug(CollectionRCString)
-        {
-            writefln("RCString.ctor: begin");
-            scope(exit) writefln("RCString.ctor: end");
-        }
-        static if (is(Q == immutable) || is(Q == const))
-        {
-            _allocator = immutable AllocatorHandler(allocator);
-        }
-        else
-        {
-            setAllocator(allocator);
-        }
+        this(allocator);
         _support = typeof(_support)(allocator, bytes);
     }
 
@@ -163,18 +134,24 @@ public:
         auto b = RCString(theAllocator, ['1', '2', '3']);
     }
 
-    ///
-    this(this Q)(string s)
+    /**
+    Constructs a qualified rcstring out of a string
+    that will use the provided allocator object.
+    For `immutable` objects, a `RCISharedAllocator` must be supplied.
+    If no allocator is passed, the default allocator will be used.
+
+    Params:
+         allocator = a $(REF RCIAllocator, std,experimental,allocator) or
+                     $(REF RCISharedAllocator, std,experimental,allocator)
+                     allocator object
+         s = input string
+
+    Complexity: $(BIGOH m), where `m` is the number of bytes of the input string.
+    */
+    this()(string s)
     {
         import std.string : representation;
-        static if (is(Q == immutable) || is(Q == const))
-        {
-            this(processAllocatorObject(), s.dup.representation);
-        }
-        else
-        {
-            this(threadAllocatorObject(), s.dup.representation);
-        }
+        this(defaultAllocator!(typeof(this)), s.dup.representation);
     }
 
     ///
@@ -185,24 +162,69 @@ public:
         assert(s.by!char.equal("dlang"));
     }
 
+    /// ditto
+    this(this Q)(dstring s)
+    {
+        import std.utf : byChar;
+        this(s.byChar);
+    }
+
     ///
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+        auto s = RCString("dlang"d);
+        assert(s.by!char.equal("dlang"));
+    }
+
+    /// ditto
+    this(this Q)(wstring s)
+    {
+        import std.utf : byChar;
+        this(s.byChar);
+    }
+
+    ///
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+        auto s = RCString("dlang"w);
+        assert(s.by!char.equal("dlang"));
+    }
+
+    /**
+    Constructs a qualified rcstring out of an input range
+    that will use the provided allocator object.
+    For `immutable` objects, a `RCISharedAllocator` must be supplied.
+    If no allocator is passed, the default allocator will be used.
+
+    Params:
+         allocator = a $(REF RCIAllocator, std,experimental,allocator) or
+                     $(REF RCISharedAllocator, std,experimental,allocator)
+                     allocator object
+         r = input range
+
+    Complexity: $(BIGOH n), where `n` is the number of elemtns of the input range.
+    */
+    this(this Q, A, R)(A allocator, R r)
+    if (!is(Q == shared)
+        && (is(A == RCISharedAllocator) || !is(Q == immutable))
+        && (is(A == RCIAllocator) || is(A == RCISharedAllocator))
+        && isInputRange!R && isSomeChar!(ElementType!R) && !isSomeString!R)
+    {
+        import std.utf : byChar;
+        this(allocator);
+        static if (hasLength!R)
+            _support.reserve(r.length);
+        foreach (e; r.byChar)
+            _support ~= cast(ubyte) e;
+    }
+
+    /// ditto
     this(this Q, R)(R r)
     if (isInputRange!R && isSomeChar!(ElementType!R) && !isSomeString!R)
     {
-        static if (is(Q == immutable) || is(Q == const))
-        {
-            this(processAllocatorObject());
-        }
-        else
-        {
-            this(threadAllocatorObject());
-        }
-        static if (hasLength!R)
-            _support.reserve(r.length);
-        foreach (e; r)
-        {
-            _support ~= cast(ubyte) e;
-        }
+        this(defaultAllocator!(typeof(this)), r);
     }
 
     ///
@@ -214,12 +236,21 @@ public:
         assert(s.equal("dlang"));
     }
 
+    ///
     @nogc nothrow pure @safe
     bool empty() const
     {
         return _support.empty;
     }
 
+    ///
+    @safe unittest
+    {
+        assert(!RCString("dlang").empty);
+        assert(RCString("").empty);
+    }
+
+    ///
     @trusted
     auto by(T)()
     if (is(T == char) || is(T == wchar) || is(T == dchar))
@@ -234,6 +265,17 @@ public:
             import std.utf : byUTF;
             return tmp.byUTF!T();
         }
+    }
+
+    ///
+    @safe unittest
+    {
+        import std.algorithm.comparison : equal;
+        import std.utf : byChar, byWchar;
+        auto hello = RCString("你好");
+        assert(hello.by!char.equal("你好".byChar));
+        assert(hello.by!wchar.equal("你好".byWchar));
+        assert(hello.by!dchar.equal("你好"));
     }
 
     ///
@@ -592,34 +634,6 @@ public:
     }
 
     ///
-    auto opIndexAssign(char c, size_t pos)
-    {
-        _support[pos] = cast(ubyte) c;
-    }
-
-    ///
-    @safe unittest
-    {
-        auto r1 = RCString("abcdef");
-        r1[2] = '0';
-        assert(r1.equal("ab0def"));
-    }
-
-    ///
-    auto opIndexAssign(char c)
-    {
-        _support[] = cast(ubyte) c;
-    }
-
-    ///
-    @safe unittest
-    {
-        auto rc = RCString("abc");
-        rc[] = '0';
-        assert(rc.equal("000"));
-    }
-
-    ///
     auto opSliceAssign(char c, size_t start, size_t end)
     {
         _support[start .. end] = cast(ubyte) c;
@@ -708,6 +722,69 @@ public:
         s2 = RCString("fefe");
         assert(s.equal("bar"));
         assert(s2.equal("fefe"));
+    }
+
+    ///
+    auto opIndex(size_t pos)
+    in
+    {
+        assert(pos < _support.length, "Invalid position.");
+    }
+    body
+    {
+        return _support[pos];
+    }
+
+    ///
+    @safe unittest
+    {
+        auto s = RCString("bar");
+        assert(s[0] == 'b');
+        assert(s[1] == 'a');
+        assert(s[2] == 'r');
+    }
+
+    ///
+    auto opIndexAssign(char el, size_t pos)
+    in
+    {
+        assert(pos < _support.length, "Invalid position.");
+    }
+    body
+    {
+        return _support[pos] = cast(ubyte) el;
+    }
+
+    ///
+    @safe unittest
+    {
+        auto s = RCString("bar");
+        assert(s[0] == 'b');
+        s[0] = 'f';
+        assert(s.equal("far"));
+    }
+
+    ///
+    auto opIndexAssign(char c)
+    {
+        _support[] = cast(ubyte) c;
+    }
+
+    ///
+    auto toHash()
+    {
+        // will be safe with 2.082
+        return () @trusted { return _support.hashOf; }();
+    }
+
+    ///
+    @safe unittest
+    {
+        auto rc = RCString("abc");
+        assert(rc.toHash == RCString("abc").toHash);
+        rc ~= 'd';
+        assert(rc.toHash == RCString("abcd").toHash);
+        assert(RCString().toHash == RCString().toHash);
     }
 }
 

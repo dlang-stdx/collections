@@ -5,3 +5,4 @@ web
 *.html
 bin/
 TODO
+libcollections.a
