@@ -3,6 +3,9 @@ module stdx.collections.hashtable;
 
 import stdx.collections.common;
 
+version(none)
+{
+
 debug(CollectionHashtable) import std.stdio;
 
 version(unittest)
@@ -836,4 +839,6 @@ void testSimpleImmutable(RCIAllocator allocator)
     auto bytesUsed = statsCollectorAlloc.bytesUsed;
     assert(bytesUsed == 0, "SList ref count leaks memory; leaked "
             ~ to!string(bytesUsed) ~ " bytes");
+}
+
 }

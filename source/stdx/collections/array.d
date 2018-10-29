@@ -31,7 +31,8 @@ version(unittest)
     private alias SSCAlloc = AffixAllocator!(StatsCollector!(Mallocator, Options.bytesUsed), size_t);
 
     SCAlloc _allocator;
-    SSCAlloc _sallocator;
+    alias _sallocator = _allocator;
+    //SSCAlloc _sallocator;
 
     //alias _sallocator = shared AffixAllocator!(Mallocator, size_t).instance;
     //alias _sallocator = shared AffixAllocator!(StatsCollector!(Mallocator, Options.bytesUsed), size_t).instance;
@@ -81,6 +82,7 @@ struct Array(T)
 {
     import std.experimental.allocator : make, dispose, stateSize;
     import std.experimental.allocator.building_blocks.affix_allocator;
+    import std.experimental.allocator.mallocator;
     import std.traits : isImplicitlyConvertible, Unqual, isArray, hasMember;
     import std.range.primitives : isInputRange, isInfinite, ElementType, hasLength;
     import std.conv : emplace;
@@ -186,6 +188,9 @@ private:
         // Will be optimized away, but the type system infers T's safety
         if (0) { T t = T.init; }
 
+        //writefln("Enter delRef with support rc %s", pref());
+        //scope(exit) writefln("Exit delRef with support rc %s", pref());
+
         assert(support !is null);
         () @trusted {
         if (opPrefix!("-=")(support, 1) == 0)
@@ -224,7 +229,7 @@ private:
         }
         else
         {
-        auto tmpSupport = (() @trusted => cast(Unqual!T[])(_allocator.allocate(stuffLength * T.sizeof)))();
+        auto tmpSupport = (() @trusted => cast(Unqual!T[])(_sallocator.allocate(stuffLength * T.sizeof)))();
         }
         assert(stuffLength == 0 || (stuffLength > 0 && tmpSupport !is null));
         size_t i = 0;
@@ -267,6 +272,8 @@ public:
     if (!is(Q == shared)
         && isImplicitlyConvertible!(U, T))
     {
+            writefln("Array.ctor: begin");
+            scope(exit) writefln("Array.ctor: end");
         debug(CollectionArray)
         {
             writefln("Array.ctor: begin");
@@ -321,13 +328,15 @@ public:
      *
      * Complexity: $(BIGOH m), where `m` is the number of elements in the range.
      */
-    version(none)
+    //version(none)
     this(Stuff, this Q)(Stuff stuff)
     if (!is(Q == shared)
         && isInputRange!Stuff && !isInfinite!Stuff
         && isImplicitlyConvertible!(ElementType!Stuff, T)
         && !is(Stuff == T[]))
     {
+            writefln("Array.ctor: begin");
+            scope(exit) writefln("Array.ctor: end");
         debug(CollectionArray)
         {
             writefln("Array.ctor: begin");
@@ -347,6 +356,7 @@ public:
     // Begin Copy Ctors
     // {
 
+    //version(none) {
     this(ref typeof(this) rhs)
     {
         debug(CollectionArray)
@@ -354,6 +364,9 @@ public:
             writefln("Array.postblit: begin");
             scope(exit) writefln("Array.postblit: end");
         }
+
+            writefln("Array.postblit: begin");
+            scope(exit) writefln("Array.postblit: end");
 
         _payload = rhs._payload;
         _support = rhs._support;
@@ -369,18 +382,47 @@ public:
 
     this(ref typeof(this) rhs) immutable
     {
+            writefln("Array.postblit imm: begin");
+            scope(exit) writefln("Array.postblit imm: end");
+
         _isShared = true;
         mixin(immutableInsert!(typeof(rhs))("rhs"));
     }
 
     this(ref typeof(this) rhs) const
     {
+            writefln("Array.postblit const: begin");
+            scope(exit) writefln("Array.postblit const: end");
+
         _isShared = true;
         mixin(immutableInsert!(typeof(rhs))("rhs"));
     }
+    //}
 
     // }
     // End Copy Ctors
+
+    // postblit
+    version(none)
+    this(this)
+    {
+        debug(CollectionArray)
+        {
+            writefln("Array.postblit: begin");
+            scope(exit) writefln("Array.postblit: end");
+        }
+
+        //_payload = rhs._payload;
+        //_support = rhs._support;
+        //_isShared = rhs._isShared;
+
+        if (_support !is null)
+        {
+            addRef(_support);
+            debug(CollectionArray) writefln("Array.postblit: Array %s has refcount: %s",
+                    _support, *prefCount(_support));
+        }
+    }
 
     // Immutable ctors
     //version(none)
@@ -409,7 +451,7 @@ public:
         destroyUnused();
     }
 
-    //version(none)
+    version(none)
     static if (is(T == int))
     nothrow pure @safe unittest
     {
@@ -744,7 +786,14 @@ public:
             // Avoids underflow if payload is empty
             _support[i] = _support[i - stuff.length];
         }
+
+        writefln("typeof support[i] %s", typeof(_support[0]).stringof);
+
         _support[pos .. pos + stuff.length] = stuff[];
+        //for (size_t i = pos, j = 0; i < pos + stuff.length; ++i, ++j) {
+            //_support[i] = stuff[j];
+        //}
+
         _payload = (() @trusted => cast(T[])(_support[0 .. _payload.length + stuff.length]))();
         return stuff.length;
     }
@@ -1444,6 +1493,10 @@ public:
      */
     auto ref opAssign()(auto ref typeof(this) rhs)
     {
+            scope(failure) assert(0, "Array.opAssign");
+            writefln("Array.opAssign: begin: ");
+            //writefln("Array.opAssign: begin: %s", rhs);
+            scope(exit) writefln("Array.opAssign: end");
         debug(CollectionArray)
         {
             scope(failure) assert(0, "Array.opAssign");
@@ -1659,6 +1712,8 @@ public:
         assert(Array!int().toHash == Array!int().toHash);
     }
 }
+
+version(none) { // debug
 
 version(unittest) private nothrow pure @safe
 void testConcatAndAppend()
@@ -1884,6 +1939,8 @@ void testCopyAndRef()
             ~ to!string(bytesUsed) ~ " bytes");
 }
 
+} // debug
+
 version(none)
 { // imm-ctor
 
@@ -1951,34 +2008,51 @@ void testConstness()
 
 } // imm-ctor
 
-version(none)
-{ // TODO: BUG - mem-leak
+//version(none)
+//{ // TODO: BUG - mem-leak
 
-version(unittest) private nothrow pure @safe
+//version(unittest) private nothrow pure @safe
+version(unittest)
 void testWithStruct()
 {
     import std.algorithm.comparison : equal;
 
     auto array = Array!int(1, 2, 3);
+    writeln("======");
+    auto a = Array!(Array!int)(array);
+    writeln("======");
+    version(none)
     {
+        writefln("arr rc is %s. should be 1", array.pref());
         auto arrayOfArrays = Array!(Array!int)(array);
+        writefln("arr rc is %s. should be 2", array.pref());
         assert(equal(arrayOfArrays.front, [1, 2, 3]));
+        writefln("arr before mod %s", array);
         arrayOfArrays.front.front = 2;
         assert(equal(arrayOfArrays.front, [2, 2, 3]));
+        assert(equal(arrayOfArrays.front, array));
+        writefln("arr after mod %s", array);
         static assert(!__traits(compiles, arrayOfArrays.insert(1)));
 
         auto immArrayOfArrays = immutable Array!(Array!int)(array);
+
+        writefln("arr rc is %s. should be 3", array.pref());
+        //array.front = 3; // TODO: BIG BUG!
         assert(immArrayOfArrays.front.front == 2);
         static assert(!__traits(compiles, immArrayOfArrays.front.front = 2));
     }
-    assert(equal(array, [2, 2, 3]));
+    //writefln("arr is %s", array);
+    writefln("arr rc is %s. should be 1", array.pref());
+    //assert(equal(array, [2, 2, 3]));
 }
 
 @safe unittest
 {
     import std.conv;
 
-    () nothrow pure @safe {
+    assert(_allocator.parent.bytesUsed == 0);
+    //() nothrow pure @safe {
+    () @trusted {
         testWithStruct();
     }();
 
@@ -1990,7 +2064,9 @@ void testWithStruct()
             ~ to!string(bytesUsed) ~ " bytes");
 }
 
-} // TODO: BUG - mem-leak
+//} // TODO: BUG - mem-leak
+
+version(none) { // debug
 
 version(unittest) private nothrow pure @safe
 void testWithClass()
@@ -2115,14 +2191,17 @@ void testSlice()
             ~ to!string(bytesUsed) ~ " bytes");
 }
 
+} // debug
+
 ///*@nogc*/ nothrow pure @safe
+version(none)
 unittest
 {
     writefln("Bytes used %s", _allocator.parent.bytesUsed);
     //writeln("Here");
     {
     Array!int arr = Array!int(1, 2, 3);
-    writeln("Here ", arr);
+    writefln("Here I have arr %s", arr);
     writeln(arr[0]);
     writeln(arr[1]);
     writeln(arr[2]);
@@ -2152,3 +2231,9 @@ unittest
     //_allocator.dispose(a);
 
 }
+
+//void main(string[] args) @nogc
+//{
+    //auto a = Array!int(1, 2, 3);
+    //auto b = a;
+//}

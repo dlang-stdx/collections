@@ -19,6 +19,8 @@ import stdx.collections.array;
 import std.range.primitives : isInputRange, ElementType, hasLength;
 import std.traits : isSomeChar, isSomeString;
 
+version(none) {
+
 debug(CollectionRCString) import std.stdio;
 
 version(unittest)
@@ -118,8 +120,9 @@ public:
         && (is(A == RCISharedAllocator) || !is(Q == immutable))
         && (is(A == RCIAllocator) || is(A == RCISharedAllocator)))
     {
-        this(allocator);
-        _support = typeof(_support)(allocator, bytes);
+        //this(allocator);
+        //_support = typeof(_support)(allocator, bytes);
+        _support = typeof(_support)(bytes);
     }
 
     ///
@@ -825,4 +828,6 @@ public:
     charStr[$ - 1] = cast(ubyte) 0xB6;
 
     assert(s.by!wchar().equal(['h', 'e', 'l', 'ö']));
+}
+
 }
