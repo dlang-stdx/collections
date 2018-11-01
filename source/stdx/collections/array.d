@@ -31,8 +31,8 @@ version(unittest)
     private alias SSCAlloc = AffixAllocator!(StatsCollector!(Mallocator, Options.bytesUsed), size_t);
 
     SCAlloc _allocator;
-    alias _sallocator = _allocator;
-    //SSCAlloc _sallocator;
+    //alias _sallocator = _allocator;
+    SSCAlloc _sallocator;
 
     //alias _sallocator = shared AffixAllocator!(Mallocator, size_t).instance;
     //alias _sallocator = shared AffixAllocator!(StatsCollector!(Mallocator, Options.bytesUsed), size_t).instance;
@@ -64,13 +64,13 @@ version(unittest)
 
     nothrow pure
     //bool pureDispose(bool isShared, void[] b) [>const<]
-    void pureDispose(bool isShared, void[] b) /*const*/
+    void pureDispose(T)(bool isShared, T[] b) /*const*/
     {
-        return (cast(void function(bool, void[]) /*const*/ nothrow pure)(&_dispose))(isShared, b);
+        return (cast(void function(bool, T[]) /*const*/ nothrow pure)(&_dispose!(T)))(isShared, b);
     }
 
     //bool _dispose(bool isShared, void[] b) [>const<]
-    void _dispose(bool isShared, void[] b) /*const*/
+    void _dispose(T)(bool isShared, T[] b) /*const*/
     {
         return isShared ?  _sallocator.dispose(b) : _allocator.dispose(b);
     }
@@ -198,7 +198,7 @@ private:
             //() @trusted { dispose(_allocator, support); }();
             version(unittest)
             {
-                .pureDispose(_isShared, support);
+                pureDispose(_isShared, support);
             }
             else
             {
@@ -223,23 +223,82 @@ private:
         }
 
         return stuffLengthStr ~ q{
+
+        size_t bytes = _allocator.parent.bytesUsed;
+        size_t immBytes = _sallocator.parent.bytesUsed;
+        writefln("ImmutableInsert begin %s; isShared %s; bytes %s; immBytes %s", cast(size_t) &this, _isShared, bytes, immBytes);
+
+        scope(exit)
+        {
+            bytes = _allocator.parent.bytesUsed;
+            immBytes = _sallocator.parent.bytesUsed;
+            writefln("ImmutableInsert end %s; bytes %s; immBytes %s", cast(size_t) &this, bytes, immBytes);
+        }
+
+        bytes = _allocator.parent.bytesUsed;
+        immBytes = _sallocator.parent.bytesUsed;
+        writefln("Allocate begin; bytes %s; immBytes %s", bytes, immBytes);
         version(unittest)
         {
-        auto tmpSupport = (() @trusted => cast(Unqual!T[])(.pureAllocate(_isShared, stuffLength * T.sizeof)))();
+            void[] tmpSupport = (() @trusted => pureAllocate(_isShared, stuffLength * T.sizeof))();
+            //void[] tmpSupport = (() @trusted => cast(Unqual!T[])(pureAllocate(_isShared, stuffLength * T.sizeof)))();
         }
         else
         {
-        auto tmpSupport = (() @trusted => cast(Unqual!T[])(_sallocator.allocate(stuffLength * T.sizeof)))();
+            //auto tmpSupport = (() @trusted => cast(Unqual!T[])(_sallocator.allocate(stuffLength * T.sizeof)))();
+
+            //Unqual!T[] tmpSupport;
+            void[] tmpSupport;
+            if (_isShared)
+            {
+                tmpSupport = (() @trusted => cast(Unqual!T[])(_sallocator.allocate(stuffLength * T.sizeof)))();
+            }
+            else
+            {
+                tmpSupport = (() @trusted => cast(Unqual!T[])(_allocator.allocate(stuffLength * T.sizeof)))();
+            }
         }
+
+        bytes = _allocator.parent.bytesUsed;
+        immBytes = _sallocator.parent.bytesUsed;
+        writefln("Allocate end; bytes %s; immBytes %s", bytes, immBytes);
         assert(stuffLength == 0 || (stuffLength > 0 && tmpSupport !is null));
         size_t i = 0;
-        foreach (item; } ~ stuff ~ q{)
+        writefln("Insert begin; typeof stuff %s", typeof(} ~ stuff ~ q{).stringof);
+        foreach (ref item; } ~ stuff ~ q{)
         {
-          (() @trusted => emplace(&tmpSupport[i++], item))();
+            //writefln("the type is %s %s %s", T.stringof, typeof(_support).stringof, typeof(_payload).stringof);
+            alias TT = ElementType!(typeof(_payload));
+            //pragma(msg, typeof(item).stringof, " TT is ", TT.stringof);
+
+
+            size_t s = i * TT.sizeof;
+            size_t e = (i + 1) * TT.sizeof;
+            writefln("Item type is %s; TT type %s, s=%s, e=%s, tmpSupport.len=%s", typeof(item).stringof, TT.stringof, s, e, tmpSupport.length);
+            void[] tmp = tmpSupport[s .. e];
+            i++;
+            writefln("Before emplace for %s", cast(size_t) tmp.ptr);
+            (() @trusted => emplace!TT(tmp, item))();
+            writefln("After emplace");
+          //(() @trusted => emplace(&tmpSupport[i++], item))();
         }
+
+        bytes = _allocator.parent.bytesUsed;
+        immBytes = _sallocator.parent.bytesUsed;
+        writefln("Insert end; bytes %s; immBytes %s", bytes, immBytes);
+
+        writefln("Here1 typeof _support %s; typeof _payload %s", typeof(_support).stringof, typeof(_payload).stringof);
         _support = (() @trusted => cast(typeof(_support))(tmpSupport))();
+        writefln("Here1");
+        writefln("Here2");
         _payload = (() @trusted => cast(typeof(_payload))(_support[0 .. stuffLength]))();
+        writefln("Here2");
         if (_support) addRef(_support);
+
+        static if (is(ElementType!(typeof(} ~ stuff ~ q{)) == Array!int)) {
+            writefln("<<<<<<<RC=%s>>>>>> %s", _support[0].pref(), cast(size_t) &_support[0]);
+        }
+
         };
     }
 
@@ -250,10 +309,24 @@ private:
             writefln("Array.destroyUnused: begin");
             scope(exit) writefln("Array.destroyUnused: end");
         }
+
+        () @trusted {
+            size_t bytes = _allocator.parent.bytesUsed;
+            size_t immBytes = _sallocator.parent.bytesUsed;
+
+            writefln("Array.destroyUnused %s: begin; _support is null %s; _isShared %s; bytes %s; immBytes %s; has rc=%s", cast(size_t)&this, _support is null, _isShared, bytes, immBytes, _support ? pref() : 0);
+        }();
+
         if (_support !is null)
         {
             delRef(_support);
         }
+
+        () @trusted {
+                size_t bytes = _allocator.parent.bytesUsed;
+                size_t immBytes = _sallocator.parent.bytesUsed;
+                writefln("Array.destroyUnused %s: end; bytes %s; immBytes %s", cast(size_t)&this, bytes, immBytes);
+        }();
     }
 
 public:
@@ -272,8 +345,8 @@ public:
     if (!is(Q == shared)
         && isImplicitlyConvertible!(U, T))
     {
-            writefln("Array.ctor: begin");
-            scope(exit) writefln("Array.ctor: end");
+            writefln("Array.ctor arr: begin; len %s; T %s, sizeof %s; stateSize %s", values.length, T.stringof, T.sizeof, stateSize!T);
+            scope(exit) writefln("Array.ctor arr: end");
         debug(CollectionArray)
         {
             writefln("Array.ctor: begin");
@@ -335,8 +408,8 @@ public:
         && isImplicitlyConvertible!(ElementType!Stuff, T)
         && !is(Stuff == T[]))
     {
-            writefln("Array.ctor: begin");
-            scope(exit) writefln("Array.ctor: end");
+            writefln("Array.ctor Stuff: begin");
+            scope(exit) writefln("Array.ctor Stuff: end");
         debug(CollectionArray)
         {
             writefln("Array.ctor: begin");
@@ -365,8 +438,8 @@ public:
             scope(exit) writefln("Array.postblit: end");
         }
 
-            writefln("Array.postblit: begin");
-            scope(exit) writefln("Array.postblit: end");
+            writefln("Array.postblit: begin %s", cast(size_t) &this);
+            scope(exit) writefln("Array.postblit: end %s", cast(size_t) &this);
 
         _payload = rhs._payload;
         _support = rhs._support;
@@ -382,7 +455,7 @@ public:
 
     this(ref typeof(this) rhs) immutable
     {
-            writefln("Array.postblit imm: begin");
+            writefln("Array.postblit imm: begin %s", cast(size_t) &this);
             scope(exit) writefln("Array.postblit imm: end");
 
         _isShared = true;
@@ -394,7 +467,7 @@ public:
             writefln("Array.postblit const: begin");
             scope(exit) writefln("Array.postblit const: end");
 
-        _isShared = true;
+        _isShared = rhs._isShared;
         mixin(immutableInsert!(typeof(rhs))("rhs"));
     }
     //}
@@ -412,10 +485,6 @@ public:
             scope(exit) writefln("Array.postblit: end");
         }
 
-        //_payload = rhs._payload;
-        //_support = rhs._support;
-        //_isShared = rhs._isShared;
-
         if (_support !is null)
         {
             addRef(_support);
@@ -426,11 +495,12 @@ public:
 
     // Immutable ctors
     //version(none)
-    private this(SuppQual, PaylQual, this Qualified)(SuppQual support, PaylQual payload)
+    private this(SuppQual, PaylQual, this Qualified)(SuppQual support, PaylQual payload, bool isShared)
         if (is(typeof(_support) : typeof(support)))
     {
         _support = support;
         _payload = payload;
+        _isShared = isShared;
         if (_support !is null)
         {
             addRef(_support);
@@ -448,6 +518,7 @@ public:
             scope(exit) writefln("Array.dtor: End for instance %s of type %s",
                     cast(size_t)(&this), typeof(this).stringof);
         }
+
         destroyUnused();
     }
 
@@ -597,6 +668,9 @@ public:
             scope(exit) writefln("Array.reserve: end");
         }
 
+            writefln("Array.reserve: begin");
+            scope(exit) writefln("Array.reserve: end");
+
         // Will be optimized away, but the type system infers T's safety
         if (0) { T t = T.init; }
 
@@ -609,7 +683,7 @@ public:
             void[] buf = _support;
             version(unittest)
             {
-                auto successfulExpand = .pureExpand(_isShared, buf, (n - capacity) * T.sizeof);
+                auto successfulExpand = pureExpand(_isShared, buf, (n - capacity) * T.sizeof);
             }
             else
             {
@@ -636,7 +710,7 @@ public:
 
         version(unittest)
         {
-            auto tmpSupport = (() @trusted => cast(Unqual!T[])(.pureAllocate(_isShared, n * T.sizeof)))();
+            auto tmpSupport = (() @trusted => cast(Unqual!T[])(pureAllocate(_isShared, n * T.sizeof)))();
         }
         else
         {
@@ -647,13 +721,16 @@ public:
         {
             if (i < _payload.length)
             {
-                emplace(&tmpSupport[i], _payload[i]);
+                //emplace(&tmpSupport[i], _payload[i]);
+                emplace(&tmpSupport[i]);
+                tmpSupport[i] = _payload[i];
             }
             else
             {
                 emplace(&tmpSupport[i]);
             }
         }
+
         //tmpSupport[0 .. _payload.length] = _payload[];
         destroyUnused();
         _support = tmpSupport;
@@ -707,6 +784,8 @@ public:
             writefln("Array.insert: begin");
             scope(exit) writefln("Array.insert: end");
         }
+            writefln("Array.insert stuff: begin");
+            scope(exit) writefln("Array.insert stuff: end");
 
         // Will be optimized away, but the type system infers T's safety
         if (0) { T t = T.init; }
@@ -724,7 +803,7 @@ public:
 
         version(unittest)
         {
-            auto tmpSupport = (() @trusted => cast(Unqual!T[])(.pureAllocate(_isShared, stuffLength * T.sizeof)))();
+            auto tmpSupport = (() @trusted => cast(Unqual!T[])(pureAllocate(_isShared, stuffLength * T.sizeof)))();
         }
         else
         {
@@ -737,14 +816,14 @@ public:
         }
 
         size_t i = 0;
-        foreach (item; stuff)
+        foreach (ref item; stuff)
         {
             tmpSupport[i++] = item;
         }
         size_t result = insert(pos, tmpSupport);
         version(unittest)
         {
-            () @trusted { .pureDispose(_isShared, tmpSupport); }();
+            () @trusted { pureDispose(_isShared, tmpSupport); }();
         }
         else
         {
@@ -762,6 +841,8 @@ public:
             writefln("Array.insert: begin");
             scope(exit) writefln("Array.insert: end");
         }
+            writefln("Array.insert arr: begin");
+            scope(exit) writefln("Array.insert arr: end");
 
         // Will be optimized away, but the type system infers T's safety
         if (0) { T t = T.init; }
@@ -787,12 +868,12 @@ public:
             _support[i] = _support[i - stuff.length];
         }
 
-        writefln("typeof support[i] %s", typeof(_support[0]).stringof);
+        //writefln("typeof support[i] %s", typeof(_support[0]).stringof);
 
-        _support[pos .. pos + stuff.length] = stuff[];
-        //for (size_t i = pos, j = 0; i < pos + stuff.length; ++i, ++j) {
-            //_support[i] = stuff[j];
-        //}
+        //_support[pos .. pos + stuff.length] = stuff[];
+        for (size_t i = pos, j = 0; i < pos + stuff.length; ++i, ++j) {
+            _support[i] = stuff[j];
+        }
 
         _payload = (() @trusted => cast(T[])(_support[0 .. _payload.length + stuff.length]))();
         return stuff.length;
@@ -1197,7 +1278,7 @@ public:
             writefln("Array.opSlice(%d, %d): begin", start, end);
             scope(exit) writefln("Array.opSlice(%d, %d): end", start, end);
         }
-        return typeof(this)(_support, _payload[start .. end]);
+        return typeof(this)(_support, _payload[start .. end], _isShared);
     }
 
     ///
@@ -2019,7 +2100,7 @@ void testWithStruct()
 
     auto array = Array!int(1, 2, 3);
     writeln("======");
-    auto a = Array!(Array!int)(array);
+    auto a = immutable Array!(Array!int)(array);
     writeln("======");
     version(none)
     {
@@ -2042,7 +2123,9 @@ void testWithStruct()
         static assert(!__traits(compiles, immArrayOfArrays.front.front = 2));
     }
     //writefln("arr is %s", array);
-    writefln("arr rc is %s. should be 1", array.pref());
+    //writefln("arr rc is %s. should be 1", array.pref());
+    //writefln("imm arr rc is %s. should be 1", a.pref());
+    writefln("imm arr.front %s rc is %s. should be 1", cast(size_t) &(a.front()), a.front.pref());
     //assert(equal(array, [2, 2, 3]));
 }
 
@@ -2053,15 +2136,22 @@ void testWithStruct()
     assert(_allocator.parent.bytesUsed == 0);
     //() nothrow pure @safe {
     () @trusted {
+        writeln("Beg==========");
         testWithStruct();
+        writeln("End==========");
     }();
 
     size_t bytesUsed = _allocator.parent.bytesUsed;
+    size_t immBytes = _sallocator.parent.bytesUsed;
     assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-            ~ to!string(bytesUsed) ~ " bytes");
-    bytesUsed = _sallocator.parent.bytesUsed;
-    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-            ~ to!string(bytesUsed) ~ " bytes");
+            ~ to!string(bytesUsed) ~ " bytes and " ~ to!string(immBytes) ~ " imm bytes");
+
+    immBytes = _sallocator.parent.bytesUsed;
+    //assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
+            //~ to!string(bytesUsed) ~ " bytes");
+
+    assert(immBytes == 0, "Array ref count leaks memory; leaked "
+            ~ to!string(bytesUsed) ~ " bytes and " ~ to!string(immBytes) ~ " imm bytes");
 }
 
 //} // TODO: BUG - mem-leak
