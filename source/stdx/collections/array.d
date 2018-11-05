@@ -6,6 +6,55 @@ module stdx.collections.array;
 // "Imports" from Phobos
 //{
 
+// Range functions
+
+/**
+Implements the range interface primitive `front` for built-in
+arrays. Due to the fact that nonmember functions can be called with
+the first argument using the dot notation, `array.front` is
+equivalent to `front(array)`. For $(GLOSSARY narrow strings), $(D
+front) automatically returns the first $(GLOSSARY code point) as _a $(D
+dchar).
+*/
+@property ref T front(T)(T[] a) @safe pure nothrow @nogc
+//TODO: if (!isNarrowString!(T[]) && !is(T[] == void[]))
+if (!is(T[] == void[]))
+{
+    assert(a.length, "Attempting to fetch the front of an empty array of " ~ T.stringof);
+    return a[0];
+}
+
+/**
+Implements the range interface primitive `empty` for types that
+obey $(LREF hasLength) property and for narrow strings. Due to the
+fact that nonmember functions can be called with the first argument
+using the dot notation, `a.empty` is equivalent to `empty(a)`.
+ */
+@property bool empty(T)(auto ref scope const(T) a)
+//TODO: if (is(typeof(a.length) : size_t) || isNarrowString!T)
+if (is(typeof(a.length) : size_t))
+{
+    return !a.length;
+}
+
+/**
+Implements the range interface primitive `popFront` for built-in
+arrays. Due to the fact that nonmember functions can be called with
+the first argument using the dot notation, `array.popFront` is
+equivalent to `popFront(array)`. For $(GLOSSARY narrow strings),
+`popFront` automatically advances to the next $(GLOSSARY code
+point).
+*/
+void popFront(T)(ref T[] a) @safe pure nothrow @nogc
+//TODO: if (!isNarrowString!(T[]) && !is(T[] == void[]))
+if (!is(T[] == void[]))
+{
+    assert(a.length, "Attempting to popFront() past the end of an array of " ~ T.stringof);
+    a = a[1 .. $];
+}
+
+// End Range functions
+
 /**
    Yields `true` if and only if `T` is an aggregate that defines
    a symbol called `name`.
@@ -137,8 +186,8 @@ enum bool isImplicitlyConvertible(From, To) = is(From : To);
 
 import std.range.primitives : isInputRange;
 
-version(none)
-{ // TODO: fix isInputRange
+//version(none)
+//{ // TODO: fix isInputRange
 /**
 */
 enum bool isInputRange(R) =
@@ -161,7 +210,10 @@ unittest
 {
     alias R = typeof([1, 2]);
 
-    pragma(msg, typeof(ReturnType!((R r) => r.empty)).stringof);
+    pragma(msg, typeof(R.init.empty).stringof);
+    pragma(msg, typeof(R.init.front).stringof);
+    //pragma(msg, typeof(R.init.popFront()).stringof);
+    pragma(msg, typeof((R r) => r.popFront()).stringof);
     //pragma(msg, typeof(R.init.empty).stringof);
     //pragma(msg, typeof(((R r) => r.empty)()).stringof);
 
@@ -169,7 +221,7 @@ unittest
     static assert(is(typeof(R.init.empty()) == bool));
     static assert(is(typeof((return ref R r) => r.front)));
     static assert(!is(typeof(R.init.front()) == void));
-    static assert(is(typeof((R r) => r.popFront)));
+    static assert(is(typeof(R.init.popFront)));
 
     static assert(isInputRange!(typeof([1, 2])));
 }
@@ -277,7 +329,7 @@ if (T.length == 1)
         enum bool isSomeFunction = false;
 }
 
-} // TODO: End fix isInputRange
+//} // TODO: End fix isInputRange
 
 /**
 */
@@ -303,20 +355,6 @@ template ElementType(R)
         alias ElementType = T;
     else
         alias ElementType = void;
-}
-
-unittest
-{
-    alias R = typeof([1, 2]);
-
-    auto a = [1, 2];
-    assert(!a.empty);
-    assert(a.front == 1);
-
-    pragma(msg, R.stringof);
-    pragma(msg, typeof(R.init).stringof);
-    pragma(msg, typeof(R.init.front).stringof);
-    static assert(is(ElementType!R == int));
 }
 
 //}
