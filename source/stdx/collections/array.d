@@ -31,7 +31,6 @@ version(unittest)
     private alias SSCAlloc = AffixAllocator!(StatsCollector!(Mallocator, Options.bytesUsed), size_t);
 
     SCAlloc _allocator;
-    //alias _sallocator = _allocator;
     SSCAlloc _sallocator;
 
     //alias _sallocator = shared AffixAllocator!(Mallocator, size_t).instance;
@@ -224,20 +223,6 @@ private:
 
         return stuffLengthStr ~ q{
 
-        size_t bytes = _allocator.parent.bytesUsed;
-        size_t immBytes = _sallocator.parent.bytesUsed;
-        writefln("ImmutableInsert begin %s; isShared %s; bytes %s; immBytes %s", cast(size_t) &this, _isShared, bytes, immBytes);
-
-        scope(exit)
-        {
-            bytes = _allocator.parent.bytesUsed;
-            immBytes = _sallocator.parent.bytesUsed;
-            writefln("ImmutableInsert end %s; bytes %s; immBytes %s", cast(size_t) &this, bytes, immBytes);
-        }
-
-        bytes = _allocator.parent.bytesUsed;
-        immBytes = _sallocator.parent.bytesUsed;
-        writefln("Allocate begin; bytes %s; immBytes %s", bytes, immBytes);
         version(unittest)
         {
             void[] tmpSupport = (() @trusted => pureAllocate(_isShared, stuffLength * T.sizeof))();
@@ -251,54 +236,32 @@ private:
             void[] tmpSupport;
             if (_isShared)
             {
-                tmpSupport = (() @trusted => cast(Unqual!T[])(_sallocator.allocate(stuffLength * T.sizeof)))();
+                tmpSupport = (() @trusted => _sallocator.allocate(stuffLength * T.sizeof))();
             }
             else
             {
-                tmpSupport = (() @trusted => cast(Unqual!T[])(_allocator.allocate(stuffLength * T.sizeof)))();
+                tmpSupport = (() @trusted => _allocator.allocate(stuffLength * T.sizeof))();
             }
         }
 
-        bytes = _allocator.parent.bytesUsed;
-        immBytes = _sallocator.parent.bytesUsed;
-        writefln("Allocate end; bytes %s; immBytes %s", bytes, immBytes);
         assert(stuffLength == 0 || (stuffLength > 0 && tmpSupport !is null));
         size_t i = 0;
-        writefln("Insert begin; typeof stuff %s", typeof(} ~ stuff ~ q{).stringof);
         foreach (ref item; } ~ stuff ~ q{)
         {
             //writefln("the type is %s %s %s", T.stringof, typeof(_support).stringof, typeof(_payload).stringof);
             alias TT = ElementType!(typeof(_payload));
-            //pragma(msg, typeof(item).stringof, " TT is ", TT.stringof);
-
+            pragma(msg, typeof(item).stringof, " TT is ", TT.stringof);
 
             size_t s = i * TT.sizeof;
             size_t e = (i + 1) * TT.sizeof;
-            writefln("Item type is %s; TT type %s, s=%s, e=%s, tmpSupport.len=%s", typeof(item).stringof, TT.stringof, s, e, tmpSupport.length);
             void[] tmp = tmpSupport[s .. e];
             i++;
-            writefln("Before emplace for %s", cast(size_t) tmp.ptr);
             (() @trusted => emplace!TT(tmp, item))();
-            writefln("After emplace");
-          //(() @trusted => emplace(&tmpSupport[i++], item))();
         }
 
-        bytes = _allocator.parent.bytesUsed;
-        immBytes = _sallocator.parent.bytesUsed;
-        writefln("Insert end; bytes %s; immBytes %s", bytes, immBytes);
-
-        writefln("Here1 typeof _support %s; typeof _payload %s", typeof(_support).stringof, typeof(_payload).stringof);
         _support = (() @trusted => cast(typeof(_support))(tmpSupport))();
-        writefln("Here1");
-        writefln("Here2");
         _payload = (() @trusted => cast(typeof(_payload))(_support[0 .. stuffLength]))();
-        writefln("Here2");
         if (_support) addRef(_support);
-
-        static if (is(ElementType!(typeof(} ~ stuff ~ q{)) == Array!int)) {
-            writefln("<<<<<<<RC=%s>>>>>> %s", _support[0].pref(), cast(size_t) &_support[0]);
-        }
-
         };
     }
 
@@ -310,23 +273,10 @@ private:
             scope(exit) writefln("Array.destroyUnused: end");
         }
 
-        () @trusted {
-            size_t bytes = _allocator.parent.bytesUsed;
-            size_t immBytes = _sallocator.parent.bytesUsed;
-
-            writefln("Array.destroyUnused %s: begin; _support is null %s; _isShared %s; bytes %s; immBytes %s; has rc=%s", cast(size_t)&this, _support is null, _isShared, bytes, immBytes, _support ? pref() : 0);
-        }();
-
         if (_support !is null)
         {
             delRef(_support);
         }
-
-        () @trusted {
-                size_t bytes = _allocator.parent.bytesUsed;
-                size_t immBytes = _sallocator.parent.bytesUsed;
-                writefln("Array.destroyUnused %s: end; bytes %s; immBytes %s", cast(size_t)&this, bytes, immBytes);
-        }();
     }
 
 public:
@@ -345,8 +295,6 @@ public:
     if (!is(Q == shared)
         && isImplicitlyConvertible!(U, T))
     {
-            writefln("Array.ctor arr: begin; len %s; T %s, sizeof %s; stateSize %s", values.length, T.stringof, T.sizeof, stateSize!T);
-            scope(exit) writefln("Array.ctor arr: end");
         debug(CollectionArray)
         {
             writefln("Array.ctor: begin");
@@ -408,8 +356,6 @@ public:
         && isImplicitlyConvertible!(ElementType!Stuff, T)
         && !is(Stuff == T[]))
     {
-            writefln("Array.ctor Stuff: begin");
-            scope(exit) writefln("Array.ctor Stuff: end");
         debug(CollectionArray)
         {
             writefln("Array.ctor: begin");
@@ -438,9 +384,6 @@ public:
             scope(exit) writefln("Array.postblit: end");
         }
 
-            writefln("Array.postblit: begin %s", cast(size_t) &this);
-            scope(exit) writefln("Array.postblit: end %s", cast(size_t) &this);
-
         _payload = rhs._payload;
         _support = rhs._support;
         _isShared = rhs._isShared;
@@ -455,18 +398,12 @@ public:
 
     this(ref typeof(this) rhs) immutable
     {
-            writefln("Array.postblit imm: begin %s", cast(size_t) &this);
-            scope(exit) writefln("Array.postblit imm: end");
-
         _isShared = true;
         mixin(immutableInsert!(typeof(rhs))("rhs"));
     }
 
     this(ref typeof(this) rhs) const
     {
-            writefln("Array.postblit const: begin");
-            scope(exit) writefln("Array.postblit const: end");
-
         _isShared = rhs._isShared;
         mixin(immutableInsert!(typeof(rhs))("rhs"));
     }
@@ -518,11 +455,9 @@ public:
             scope(exit) writefln("Array.dtor: End for instance %s of type %s",
                     cast(size_t)(&this), typeof(this).stringof);
         }
-
         destroyUnused();
     }
 
-    version(none)
     static if (is(T == int))
     nothrow pure @safe unittest
     {
@@ -668,9 +603,6 @@ public:
             scope(exit) writefln("Array.reserve: end");
         }
 
-            writefln("Array.reserve: begin");
-            scope(exit) writefln("Array.reserve: end");
-
         // Will be optimized away, but the type system infers T's safety
         if (0) { T t = T.init; }
 
@@ -784,8 +716,6 @@ public:
             writefln("Array.insert: begin");
             scope(exit) writefln("Array.insert: end");
         }
-            writefln("Array.insert stuff: begin");
-            scope(exit) writefln("Array.insert stuff: end");
 
         // Will be optimized away, but the type system infers T's safety
         if (0) { T t = T.init; }
@@ -841,8 +771,6 @@ public:
             writefln("Array.insert: begin");
             scope(exit) writefln("Array.insert: end");
         }
-            writefln("Array.insert arr: begin");
-            scope(exit) writefln("Array.insert arr: end");
 
         // Will be optimized away, but the type system infers T's safety
         if (0) { T t = T.init; }
@@ -1574,10 +1502,6 @@ public:
      */
     auto ref opAssign()(auto ref typeof(this) rhs)
     {
-            scope(failure) assert(0, "Array.opAssign");
-            writefln("Array.opAssign: begin: ");
-            //writefln("Array.opAssign: begin: %s", rhs);
-            scope(exit) writefln("Array.opAssign: end");
         debug(CollectionArray)
         {
             scope(failure) assert(0, "Array.opAssign");
@@ -1794,7 +1718,7 @@ public:
     }
 }
 
-version(none) { // debug
+//version(none) { // debug
 
 version(unittest) private nothrow pure @safe
 void testConcatAndAppend()
@@ -2020,7 +1944,7 @@ void testCopyAndRef()
             ~ to!string(bytesUsed) ~ " bytes");
 }
 
-} // debug
+//} // debug
 
 version(none)
 { // imm-ctor
@@ -2092,6 +2016,7 @@ void testConstness()
 //version(none)
 //{ // TODO: BUG - mem-leak
 
+// TODO: FIXME PURE
 //version(unittest) private nothrow pure @safe
 version(unittest)
 void testWithStruct()
@@ -2099,34 +2024,31 @@ void testWithStruct()
     import std.algorithm.comparison : equal;
 
     auto array = Array!int(1, 2, 3);
-    writeln("======");
-    auto a = immutable Array!(Array!int)(array);
-    writeln("======");
-    version(none)
     {
-        writefln("arr rc is %s. should be 1", array.pref());
+        assert(array.pref() == 1);
+
         auto arrayOfArrays = Array!(Array!int)(array);
-        writefln("arr rc is %s. should be 2", array.pref());
+        assert(array.pref() == 2);
         assert(equal(arrayOfArrays.front, [1, 2, 3]));
-        writefln("arr before mod %s", array);
         arrayOfArrays.front.front = 2;
         assert(equal(arrayOfArrays.front, [2, 2, 3]));
         assert(equal(arrayOfArrays.front, array));
-        writefln("arr after mod %s", array);
         static assert(!__traits(compiles, arrayOfArrays.insert(1)));
 
         auto immArrayOfArrays = immutable Array!(Array!int)(array);
 
-        writefln("arr rc is %s. should be 3", array.pref());
-        //array.front = 3; // TODO: BIG BUG!
+        // immutable is transitive, so it must iterate over array and
+        // create a copy, and not set a ref
+        assert(array.pref() == 2);
+        array.front = 3;
         assert(immArrayOfArrays.front.front == 2);
+        assert(immArrayOfArrays.pref() == 1);
+        assert(immArrayOfArrays.front.pref() == 1);
         static assert(!__traits(compiles, immArrayOfArrays.front.front = 2));
+        static assert(!__traits(compiles, immArrayOfArrays.front = array));
     }
-    //writefln("arr is %s", array);
-    //writefln("arr rc is %s. should be 1", array.pref());
-    //writefln("imm arr rc is %s. should be 1", a.pref());
-    writefln("imm arr.front %s rc is %s. should be 1", cast(size_t) &(a.front()), a.front.pref());
-    //assert(equal(array, [2, 2, 3]));
+    assert(array.pref() == 1);
+    assert(equal(array, [3, 2, 3]));
 }
 
 @safe unittest
@@ -2136,9 +2058,7 @@ void testWithStruct()
     assert(_allocator.parent.bytesUsed == 0);
     //() nothrow pure @safe {
     () @trusted {
-        writeln("Beg==========");
         testWithStruct();
-        writeln("End==========");
     }();
 
     size_t bytesUsed = _allocator.parent.bytesUsed;
@@ -2169,7 +2089,7 @@ void testWithClass()
 
     MyClass c = new MyClass(10);
     {
-        auto a = Array!MyClass(c);
+        Array!MyClass a = Array!MyClass(c);
         assert(a.front.x == 10);
         assert(a.front is c);
         a.front.x = 20;
@@ -2192,6 +2112,8 @@ void testWithClass()
     assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
             ~ to!string(bytesUsed) ~ " bytes");
 }
+
+} // debug
 
 version(unittest) private nothrow pure @safe
 void testOpOverloads()
@@ -2280,8 +2202,6 @@ void testSlice()
     assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
             ~ to!string(bytesUsed) ~ " bytes");
 }
-
-} // debug
 
 ///*@nogc*/ nothrow pure @safe
 version(none)
