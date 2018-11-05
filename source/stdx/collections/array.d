@@ -184,7 +184,7 @@ Is `From` implicitly convertible to `To`?
  */
 enum bool isImplicitlyConvertible(From, To) = is(From : To);
 
-import std.range.primitives : isInputRange;
+//import std.range.primitives : isInputRange;
 
 //version(none)
 //{ // TODO: fix isInputRange
@@ -221,7 +221,7 @@ unittest
     static assert(is(typeof(R.init.empty()) == bool));
     static assert(is(typeof((return ref R r) => r.front)));
     static assert(!is(typeof(R.init.front()) == void));
-    static assert(is(typeof(R.init.popFront)));
+    static assert(is(typeof((R r) => r.popFront)));
 
     static assert(isInputRange!(typeof([1, 2])));
 }
