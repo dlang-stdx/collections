@@ -1,20 +1,16 @@
 ///
 module stdx.collections.array;
 
-//import stdx.collections.common;
-
 // "Imports" from Phobos
 //{
 
 // Range functions
 
 /**
-Implements the range interface primitive `front` for built-in
-arrays. Due to the fact that nonmember functions can be called with
-the first argument using the dot notation, `array.front` is
-equivalent to `front(array)`. For $(GLOSSARY narrow strings), $(D
-front) automatically returns the first $(GLOSSARY code point) as _a $(D
-dchar).
+Implements the range interface primitive `front` for built-in arrays. Due to the
+fact that nonmember functions can be called with the first argument using the dot
+notation, `array.front` is equivalent to `front(array)`. For $(GLOSSARY narrow strings),
+`front` automatically returns the first $(GLOSSARY code point) as _a `dchar`.
 */
 @property ref T front(T)(T[] a) @safe pure nothrow @nogc
 //TODO: if (!isNarrowString!(T[]) && !is(T[] == void[]))
@@ -25,10 +21,8 @@ if (!is(T[] == void[]))
 }
 
 /**
-Implements the range interface primitive `empty` for types that
-obey $(LREF hasLength) property and for narrow strings. Due to the
-fact that nonmember functions can be called with the first argument
-using the dot notation, `a.empty` is equivalent to `empty(a)`.
+Implements the range interface primitive `empty` for types that obey `hasLength`
+property and for narrow strings.
  */
 @property bool empty(T)(auto ref scope const(T) a)
 //TODO: if (is(typeof(a.length) : size_t) || isNarrowString!T)
@@ -38,12 +32,9 @@ if (is(typeof(a.length) : size_t))
 }
 
 /**
-Implements the range interface primitive `popFront` for built-in
-arrays. Due to the fact that nonmember functions can be called with
-the first argument using the dot notation, `array.popFront` is
-equivalent to `popFront(array)`. For $(GLOSSARY narrow strings),
-`popFront` automatically advances to the next $(GLOSSARY code
-point).
+Implements the range interface primitive `popFront` for built-in arrays. For
+$(GLOSSARY narrow strings), `popFront` automatically advances to the next
+$(GLOSSARY code point).
 */
 void popFront(T)(ref T[] a) @safe pure nothrow @nogc
 //TODO: if (!isNarrowString!(T[]) && !is(T[] == void[]))
@@ -53,21 +44,52 @@ if (!is(T[] == void[]))
     a = a[1 .. $];
 }
 
+/**
+This is a best-effort implementation of `length` for any kind of range.
+*/
+auto walkLength(Range)(Range range)
+if (isInputRange!Range && !isInfinite!Range)
+{
+    static if (hasLength!Range)
+        return range.length;
+    else
+    {
+        size_t result;
+        for ( ; !range.empty ; range.popFront() )
+            ++result;
+        return result;
+    }
+}
+
+/**
+*/
+enum bool isInputRange(R) =
+    is(typeof(R.init) == R)
+    && is(typeof(R.init.empty()) == bool)
+    && is(typeof((return ref R r) => r.front))
+    && !is(typeof(R.init.front()) == void)
+    && is(typeof((R r) => r.popFront));
+
+/**
+*/
+template isInfinite(R)
+{
+    static if (isInputRange!R && __traits(compiles, { enum e = R.empty; }))
+        enum bool isInfinite = !R.empty;
+    else
+        enum bool isInfinite = false;
+}
+
 // End Range functions
 
 /**
-   Yields `true` if and only if `T` is an aggregate that defines
-   a symbol called `name`.
+Yields `true` if and only if `T` is an aggregate that defines a symbol called `name`.
  */
 enum hasMember(T, string name) = __traits(hasMember, T, name);
 
-//version(none)
-//{
-
 /**
- * Detect whether type `T` is an array (static or dynamic; for associative
- *  arrays see $(LREF isAssociativeArray)).
- */
+Detect whether type `T` is an array (static or dynamic.
+*/
 enum bool isArray(T) = isStaticArray!T || isDynamicArray!T;
 
 /**
@@ -131,7 +153,7 @@ template OriginalType(T)
 }
 
 // [For internal use]
-template ModifyTypePreservingTQ(alias Modifier, T)
+private template ModifyTypePreservingTQ(alias Modifier, T)
 {
          static if (is(T U ==          immutable U)) alias ModifyTypePreservingTQ =          immutable Modifier!U;
     else static if (is(T U == shared inout const U)) alias ModifyTypePreservingTQ = shared inout const Modifier!U;
@@ -149,8 +171,6 @@ template ModifyTypePreservingTQ(alias Modifier, T)
  */
 enum bool isAggregateType(T) = is(T == struct) || is(T == union) ||
                                is(T == class) || is(T == interface);
-
-//}
 
 /**
 Removes all qualifiers, if any, from type `T`.
@@ -184,171 +204,11 @@ Is `From` implicitly convertible to `To`?
  */
 enum bool isImplicitlyConvertible(From, To) = is(From : To);
 
-//import std.range.primitives : isInputRange;
-
-//version(none)
-//{ // TODO: fix isInputRange
 /**
-*/
-enum bool isInputRange(R) =
-    is(typeof(R.init) == R)
-    && is(typeof(R.init.empty()) == bool)
-    && is(typeof((return ref R r) => r.front))
-    && !is(typeof(R.init.front()) == void)
-    && is(typeof((R r) => r.popFront));
-/*
-enum bool isInputRange(R) =
-    is(typeof(R.init) == R)
-    && is(ReturnType!((R r) => r.empty) == bool)
-    && is(typeof((return ref R r) => r.front))
-    && !is(ReturnType!((R r) => r.front) == void)
-    && is(typeof((R r) => r.popFront));
-    */
-
-
-version(none)
-unittest
-{
-    alias R = typeof([1, 2]);
-
-    pragma(msg, typeof(R.init.empty).stringof);
-    pragma(msg, typeof(R.init.front).stringof);
-    //pragma(msg, typeof(R.init.popFront()).stringof);
-    pragma(msg, typeof((R r) => r.popFront()).stringof);
-    //pragma(msg, typeof(R.init.empty).stringof);
-    //pragma(msg, typeof(((R r) => r.empty)()).stringof);
-
-    static assert(is(typeof(R.init) == R));
-    static assert(is(typeof(R.init.empty()) == bool));
-    static assert(is(typeof((return ref R r) => r.front)));
-    static assert(!is(typeof(R.init.front()) == void));
-    static assert(is(typeof((R r) => r.popFront)));
-
-    static assert(isInputRange!(typeof([1, 2])));
-}
-
-/***
- * Get the type of the return value from a function,
- * a pointer to function, a delegate, a struct
- * with an opCall, a pointer to a struct with an opCall,
- * or a class with an `opCall`. Please note that $(D_KEYWORD ref)
- * is not part of a type, but the attribute of the function
- * (see template $(LREF functionAttributes)).
- */
-template ReturnType(func...)
-if (func.length == 1 && isCallable!func)
-{
-    static if (is(FunctionTypeOf!func R == return))
-        alias ReturnType = R;
-    else
-        static assert(0, "argument has no return type");
-}
-
-/**
-Get the function type from a callable object `func`.
-
-Using builtin `typeof` on a property function yields the types of the
-property value, not of the property function itself.  Still,
-`FunctionTypeOf` is able to obtain function types of properties.
-
-Note:
-Do not confuse function types with function pointer types; function types are
-usually used for compile-time reflection purposes.
- */
-template FunctionTypeOf(func...)
-if (func.length == 1 && isCallable!func)
-{
-    static if (is(typeof(& func[0]) Fsym : Fsym*) && is(Fsym == function) || is(typeof(& func[0]) Fsym == delegate))
-    {
-        alias FunctionTypeOf = Fsym; // HIT: (nested) function symbol
-    }
-    else static if (is(typeof(& func[0].opCall) Fobj == delegate))
-    {
-        alias FunctionTypeOf = Fobj; // HIT: callable object
-    }
-    else static if (is(typeof(& func[0].opCall) Ftyp : Ftyp*) && is(Ftyp == function))
-    {
-        alias FunctionTypeOf = Ftyp; // HIT: callable type
-    }
-    else static if (is(func[0] T) || is(typeof(func[0]) T))
-    {
-        static if (is(T == function))
-            alias FunctionTypeOf = T;    // HIT: function
-        else static if (is(T Fptr : Fptr*) && is(Fptr == function))
-            alias FunctionTypeOf = Fptr; // HIT: function pointer
-        else static if (is(T Fdlg == delegate))
-            alias FunctionTypeOf = Fdlg; // HIT: delegate
-        else
-            static assert(0);
-    }
-    else
-        static assert(0);
-}
-
-/**
-Detect whether `T` is a callable object, which can be called with the
-function call operator `$(LPAREN)...$(RPAREN)`.
- */
-template isCallable(T...)
-if (T.length == 1)
-{
-    static if (is(typeof(& T[0].opCall) == delegate))
-        // T is a object which has a member function opCall().
-        enum bool isCallable = true;
-    else static if (is(typeof(& T[0].opCall) V : V*) && is(V == function))
-        // T is a type which has a static member function opCall().
-        enum bool isCallable = true;
-    else
-        enum bool isCallable = isSomeFunction!T;
-}
-
-/**
-Detect whether symbol or type `T` is a function, a function pointer or a delegate.
-
-Params:
-    T = The type to check
-Returns:
-    A `bool`
- */
-template isSomeFunction(T...)
-if (T.length == 1)
-{
-    static if (is(typeof(& T[0]) U : U*) && is(U == function) || is(typeof(& T[0]) U == delegate))
-    {
-        // T is a (nested) function symbol.
-        enum bool isSomeFunction = true;
-    }
-    else static if (is(T[0] W) || is(typeof(T[0]) W))
-    {
-        // T is an expression or a type.  Take the type of it and examine.
-        static if (is(W F : F*) && is(F == function))
-            enum bool isSomeFunction = true; // function pointer
-        else
-            enum bool isSomeFunction = is(W == function) || is(W == delegate);
-    }
-    else
-        enum bool isSomeFunction = false;
-}
-
-//} // TODO: End fix isInputRange
-
-/**
-*/
-template isInfinite(R)
-{
-    static if (isInputRange!R && __traits(compiles, { enum e = R.empty; }))
-        enum bool isInfinite = !R.empty;
-    else
-        enum bool isInfinite = false;
-}
-
-/**
-The element type of `R`. `R` does not have to be a range. The
-element type is determined as the type yielded by `r.front` for an
-object `r` of type `R`. For example, `ElementType!(T[])` is
-`T` if `T[]` isn't a narrow string; if it is, the element type is
-`dchar`. If `R` doesn't have `front`, `ElementType!R` is
-`void`.
+The element type of `R`. `R` does not have to be a range. The element type is
+determined as the type yielded by `r.front` for an object `r` of type `R`. For
+example, `ElementType!(T[])` is `T` if `T[]` isn't a narrow string; if it is, the
+element type is `dchar`. If `R` doesn't have `front`, `ElementType!R` is `void`.
  */
 template ElementType(R)
 {
@@ -362,18 +222,6 @@ template ElementType(R)
 Yields `true` if `R` has a `length` member that returns a value of `size_t`
 type. `R` does not have to be a range. If `R` is a range, algorithms in the
 standard library are only guaranteed to support `length` with type `size_t`.
-
-Note that `length` is an optional primitive as no range must implement it. Some
-ranges do not store their length explicitly, some cannot compute it without
-actually exhausting the range (e.g. socket streams), and some other ranges may
-be infinite.
-
-Although narrow string types (`char[]`, `wchar[]`, and their qualified
-derivatives) do define a `length` property, `hasLength` yields `false` for them.
-This is because a narrow string's length does not reflect the number of
-characters, but instead the number of encoding units, and as such is not useful
-with range-oriented algorithms. To use strings as random-access ranges with
-length, use $(REF representation, std, string) or $(REF byCodeUnit, std, utf).
 */
 template hasLength(R)
 {
@@ -387,16 +235,12 @@ template hasLength(R)
 //}
 // End "Imports" from Phobos
 
-// From common
-// {
-
 auto tail(Collection)(Collection collection)
 if (isInputRange!Collection)
 {
     collection.popFront();
     return collection;
 }
-// }
 
 debug(CollectionArray) import std.stdio;
 
@@ -407,16 +251,12 @@ version(unittest)
     import std.experimental.allocator.building_blocks.stats_collector;
     import std.experimental.allocator : dispose, stateSize;
     import std.stdio;
-    //import std.traits : hasMember;
 
     private alias SCAlloc = AffixAllocator!(StatsCollector!(Mallocator, Options.bytesUsed), size_t);
     private alias SSCAlloc = AffixAllocator!(StatsCollector!(Mallocator, Options.bytesUsed), size_t);
 
     SCAlloc _allocator;
     SSCAlloc _sallocator;
-
-    //alias _sallocator = shared AffixAllocator!(Mallocator, size_t).instance;
-    //alias _sallocator = shared AffixAllocator!(StatsCollector!(Mallocator, Options.bytesUsed), size_t).instance;
 
     nothrow pure @trusted
     void[] pureAllocate(bool isShared, size_t n) /*const*/
@@ -455,7 +295,6 @@ version(unittest)
     {
         return isShared ?  _sallocator.dispose(b) : _allocator.dispose(b);
     }
-
 }
 
 ///
@@ -464,10 +303,6 @@ struct Array(T)
     import std.experimental.allocator : dispose, stateSize;
     import std.experimental.allocator.building_blocks.affix_allocator;
     import std.experimental.allocator.mallocator;
-
-    //import std.traits : isArray;
-
-    //import std.range.primitives : /*isInputRange, isInfinite, ElementType,*/ hasLength;
 
     import std.conv : emplace;
 
@@ -478,10 +313,6 @@ struct Array(T)
 
     version(unittest)
     {
-        import std.experimental.allocator.building_blocks.stats_collector;
-
-        //alias _allocator = AffixAllocator!(StatsCollector!(Mallocator, Options.bytesUsed), size_t).instance;
-        //alias _sallocator = shared AffixAllocator!(StatsCollector!(Mallocator, Options.bytesUsed), size_t).instance;
     }
     else
     {
@@ -549,15 +380,6 @@ private:
     if ((op == "==") || (op == "<=") || (op == "<") || (op == ">=") || (op == ">"))
     {
         return (cast(size_t delegate(const T[], size_t) const @nogc nothrow pure)(&bar!(op, T)))(support, val);
-        //assert(support !is null);
-        //if (_isShared)
-        //{
-            //return cast(size_t)(atomicOp!op(*cast(shared size_t *)&_sallocator.prefix(support), val));
-        //}
-        //else
-        //{
-            //mixin("return cast(size_t)(*cast(size_t *)&_allocator.prefix(support)" ~ op ~ "val);");
-        //}
     }
 
     @nogc nothrow pure @trusted
@@ -611,13 +433,9 @@ private:
         version(unittest)
         {
             void[] tmpSupport = (() @trusted => pureAllocate(_isShared, stuffLength * T.sizeof))();
-            //void[] tmpSupport = (() @trusted => cast(Unqual!T[])(pureAllocate(_isShared, stuffLength * T.sizeof)))();
         }
         else
         {
-            //auto tmpSupport = (() @trusted => cast(Unqual!T[])(_sallocator.allocate(stuffLength * T.sizeof)))();
-
-            //Unqual!T[] tmpSupport;
             void[] tmpSupport;
             if (_isShared)
             {
@@ -697,7 +515,6 @@ public:
     }
 
     ///
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -734,7 +551,6 @@ public:
      *
      * Complexity: $(BIGOH m), where `m` is the number of elements in the range.
      */
-    //version(none)
     this(Stuff, this Q)(Stuff stuff)
     if (!is(Q == shared)
         && isInputRange!Stuff && !isInfinite!Stuff
@@ -760,7 +576,6 @@ public:
     // Begin Copy Ctors
     // {
 
-    //version(none) {
     this(ref typeof(this) rhs)
     {
         debug(CollectionArray)
@@ -792,31 +607,11 @@ public:
         _isShared = rhs._isShared;
         mixin(immutableInsert!(typeof(rhs))("rhs"));
     }
-    //}
 
     // }
     // End Copy Ctors
 
-    // postblit
-    version(none)
-    this(this)
-    {
-        debug(CollectionArray)
-        {
-            writefln("Array.postblit: begin");
-            scope(exit) writefln("Array.postblit: end");
-        }
-
-        if (_support !is null)
-        {
-            addRef(_support);
-            debug(CollectionArray) writefln("Array.postblit: Array %s has refcount: %s",
-                    _support, *prefCount(_support));
-        }
-    }
-
     // Immutable ctors
-    //version(none)
     private this(SuppQual, PaylQual, this Qualified)(SuppQual support, PaylQual payload, bool isShared)
         if (is(typeof(_support) : typeof(support)))
     {
@@ -906,7 +701,6 @@ public:
     alias opDollar = length;
 
     ///
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -932,7 +726,6 @@ public:
     }
 
     ///
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -957,7 +750,6 @@ public:
     }
 
     ///
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -1057,7 +849,6 @@ public:
     }
 
     ///
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -1193,7 +984,6 @@ public:
     }
 
     ///
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -1234,7 +1024,6 @@ public:
     }
 
     ///
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -1265,7 +1054,6 @@ public:
     }
 
     ///
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -1292,7 +1080,6 @@ public:
     }
 
     ///
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -1321,7 +1108,6 @@ public:
     }
 
     ///
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -1368,7 +1154,6 @@ public:
     }
 
     ///
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -1428,7 +1213,6 @@ public:
     }
 
     ///
-    version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -1470,7 +1254,6 @@ public:
     }
 
     ///
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -1529,7 +1312,6 @@ public:
     }
 
     ///
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -1595,7 +1377,6 @@ public:
     }
 
     ///
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -1630,7 +1411,6 @@ public:
     }
 
     ///
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -1661,7 +1441,6 @@ public:
     }
 
     ///
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -1696,7 +1475,6 @@ public:
     }
 
     ///
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -1727,7 +1505,6 @@ public:
     }
 
     ///
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -1763,7 +1540,6 @@ public:
     }
 
     ///
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -1799,7 +1575,6 @@ public:
     }
 
     ///
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -1854,7 +1629,6 @@ public:
     }
 
     ///
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -1913,7 +1687,6 @@ public:
     }
 
     ///
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -1928,7 +1701,6 @@ public:
         assert(equal(a2, [0, 2]));
     }
 
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -1973,7 +1745,6 @@ public:
     }
 
     ///
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -1995,24 +1766,13 @@ public:
     }
 
     ///
-    //version(none)
     bool opEquals()(auto ref typeof(this) rhs) const
     {
         import std.algorithm.comparison : equal;
-        //return _support == rhs._support;
         return _support.equal(rhs);
-        //pragma(msg, typeof(_support).stringof);
-        //pragma(msg, typeof(_payload).stringof);
-        //pragma(msg, typeof(rhs).stringof);
-
-        //auto t = cast(Unqual!T[]) _support;
-        //pragma(msg, typeof(t).stringof);
-
-        //return t.equal(rhs);
     }
 
     ///
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -2050,7 +1810,6 @@ public:
     }
 
     ///
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -2067,7 +1826,6 @@ public:
         assert(arr3 > arr4);
     }
 
-    //version(none)
     static if (is(T == int))
     @safe unittest
     {
@@ -2092,7 +1850,6 @@ public:
     }
 
     ///
-    //version(none)
     @safe unittest
     {
         auto arr1 = Array!int(1, 2);
@@ -2102,8 +1859,6 @@ public:
         assert(Array!int().toHash == Array!int().toHash);
     }
 }
-
-//version(none) { // debug
 
 version(unittest) private nothrow pure @safe
 void testConcatAndAppend()
@@ -2329,7 +2084,6 @@ void testCopyAndRef()
             ~ to!string(bytesUsed) ~ " bytes");
 }
 
-//} // debug
 
 version(none)
 { // imm-ctor
@@ -2398,9 +2152,6 @@ void testConstness()
 
 } // imm-ctor
 
-//version(none)
-//{ // TODO: BUG - mem-leak
-
 // TODO: FIXME PURE
 //version(unittest) private nothrow pure @safe
 version(unittest)
@@ -2458,8 +2209,6 @@ void testWithStruct()
     assert(immBytes == 0, "Array ref count leaks memory; leaked "
             ~ to!string(bytesUsed) ~ " bytes and " ~ to!string(immBytes) ~ " imm bytes");
 }
-
-//} // TODO: BUG - mem-leak
 
 version(none) { // debug
 
