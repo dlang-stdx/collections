@@ -130,11 +130,200 @@ template Unqual(T)
     }
 }
 
+/**
+Is `From` implicitly convertible to `To`?
+ */
+enum bool isImplicitlyConvertible(From, To) = is(From : To);
+
+import std.range.primitives : isInputRange;
+
+version(none)
+{ // TODO: fix isInputRange
+/**
+*/
+enum bool isInputRange(R) =
+    is(typeof(R.init) == R)
+    && is(typeof(R.init.empty()) == bool)
+    && is(typeof((return ref R r) => r.front))
+    && !is(typeof(R.init.front()) == void)
+    && is(typeof((R r) => r.popFront));
+/*
+enum bool isInputRange(R) =
+    is(typeof(R.init) == R)
+    && is(ReturnType!((R r) => r.empty) == bool)
+    && is(typeof((return ref R r) => r.front))
+    && !is(ReturnType!((R r) => r.front) == void)
+    && is(typeof((R r) => r.popFront));
+    */
+
+
+unittest
+{
+    alias R = typeof([1, 2]);
+
+    pragma(msg, typeof(ReturnType!((R r) => r.empty)).stringof);
+    //pragma(msg, typeof(R.init.empty).stringof);
+    //pragma(msg, typeof(((R r) => r.empty)()).stringof);
+
+    static assert(is(typeof(R.init) == R));
+    static assert(is(typeof(R.init.empty()) == bool));
+    static assert(is(typeof((return ref R r) => r.front)));
+    static assert(!is(typeof(R.init.front()) == void));
+    static assert(is(typeof((R r) => r.popFront)));
+
+    static assert(isInputRange!(typeof([1, 2])));
+}
+
+/***
+ * Get the type of the return value from a function,
+ * a pointer to function, a delegate, a struct
+ * with an opCall, a pointer to a struct with an opCall,
+ * or a class with an `opCall`. Please note that $(D_KEYWORD ref)
+ * is not part of a type, but the attribute of the function
+ * (see template $(LREF functionAttributes)).
+ */
+template ReturnType(func...)
+if (func.length == 1 && isCallable!func)
+{
+    static if (is(FunctionTypeOf!func R == return))
+        alias ReturnType = R;
+    else
+        static assert(0, "argument has no return type");
+}
+
+/**
+Get the function type from a callable object `func`.
+
+Using builtin `typeof` on a property function yields the types of the
+property value, not of the property function itself.  Still,
+`FunctionTypeOf` is able to obtain function types of properties.
+
+Note:
+Do not confuse function types with function pointer types; function types are
+usually used for compile-time reflection purposes.
+ */
+template FunctionTypeOf(func...)
+if (func.length == 1 && isCallable!func)
+{
+    static if (is(typeof(& func[0]) Fsym : Fsym*) && is(Fsym == function) || is(typeof(& func[0]) Fsym == delegate))
+    {
+        alias FunctionTypeOf = Fsym; // HIT: (nested) function symbol
+    }
+    else static if (is(typeof(& func[0].opCall) Fobj == delegate))
+    {
+        alias FunctionTypeOf = Fobj; // HIT: callable object
+    }
+    else static if (is(typeof(& func[0].opCall) Ftyp : Ftyp*) && is(Ftyp == function))
+    {
+        alias FunctionTypeOf = Ftyp; // HIT: callable type
+    }
+    else static if (is(func[0] T) || is(typeof(func[0]) T))
+    {
+        static if (is(T == function))
+            alias FunctionTypeOf = T;    // HIT: function
+        else static if (is(T Fptr : Fptr*) && is(Fptr == function))
+            alias FunctionTypeOf = Fptr; // HIT: function pointer
+        else static if (is(T Fdlg == delegate))
+            alias FunctionTypeOf = Fdlg; // HIT: delegate
+        else
+            static assert(0);
+    }
+    else
+        static assert(0);
+}
+
+/**
+Detect whether `T` is a callable object, which can be called with the
+function call operator `$(LPAREN)...$(RPAREN)`.
+ */
+template isCallable(T...)
+if (T.length == 1)
+{
+    static if (is(typeof(& T[0].opCall) == delegate))
+        // T is a object which has a member function opCall().
+        enum bool isCallable = true;
+    else static if (is(typeof(& T[0].opCall) V : V*) && is(V == function))
+        // T is a type which has a static member function opCall().
+        enum bool isCallable = true;
+    else
+        enum bool isCallable = isSomeFunction!T;
+}
+
+/**
+Detect whether symbol or type `T` is a function, a function pointer or a delegate.
+
+Params:
+    T = The type to check
+Returns:
+    A `bool`
+ */
+template isSomeFunction(T...)
+if (T.length == 1)
+{
+    static if (is(typeof(& T[0]) U : U*) && is(U == function) || is(typeof(& T[0]) U == delegate))
+    {
+        // T is a (nested) function symbol.
+        enum bool isSomeFunction = true;
+    }
+    else static if (is(T[0] W) || is(typeof(T[0]) W))
+    {
+        // T is an expression or a type.  Take the type of it and examine.
+        static if (is(W F : F*) && is(F == function))
+            enum bool isSomeFunction = true; // function pointer
+        else
+            enum bool isSomeFunction = is(W == function) || is(W == delegate);
+    }
+    else
+        enum bool isSomeFunction = false;
+}
+
+} // TODO: End fix isInputRange
+
+/**
+*/
+template isInfinite(R)
+{
+    static if (isInputRange!R && __traits(compiles, { enum e = R.empty; }))
+        enum bool isInfinite = !R.empty;
+    else
+        enum bool isInfinite = false;
+}
+
+/**
+The element type of `R`. `R` does not have to be a range. The
+element type is determined as the type yielded by `r.front` for an
+object `r` of type `R`. For example, `ElementType!(T[])` is
+`T` if `T[]` isn't a narrow string; if it is, the element type is
+`dchar`. If `R` doesn't have `front`, `ElementType!R` is
+`void`.
+ */
+template ElementType(R)
+{
+    static if (is(typeof(R.init.front.init) T))
+        alias ElementType = T;
+    else
+        alias ElementType = void;
+}
+
+unittest
+{
+    alias R = typeof([1, 2]);
+
+    auto a = [1, 2];
+    assert(!a.empty);
+    assert(a.front == 1);
+
+    pragma(msg, R.stringof);
+    pragma(msg, typeof(R.init).stringof);
+    pragma(msg, typeof(R.init.front).stringof);
+    static assert(is(ElementType!R == int));
+}
+
 //}
+// End "Imports" from Phobos
 
 // From common
 // {
-import std.range: isInputRange;
 
 auto tail(Collection)(Collection collection)
 if (isInputRange!Collection)
@@ -210,11 +399,14 @@ struct Array(T)
     import std.experimental.allocator : dispose, stateSize;
     import std.experimental.allocator.building_blocks.affix_allocator;
     import std.experimental.allocator.mallocator;
-    import std.traits : isImplicitlyConvertible, /*Unqual,*/ isArray/*, hasMember*/;
-    import std.range.primitives : isInputRange, isInfinite, ElementType, hasLength;
+
+    import std.traits : isArray;
+
+    import std.range.primitives : /*isInputRange, isInfinite, ElementType,*/ hasLength;
+
     import std.conv : emplace;
+
     import core.atomic : atomicOp;
-    //import std.algorithm.mutation : move;
 
     package T[] _payload;
     package Unqual!T[] _support;
@@ -378,7 +570,7 @@ private:
         {
             //writefln("the type is %s %s %s", T.stringof, typeof(_support).stringof, typeof(_payload).stringof);
             alias TT = ElementType!(typeof(_payload));
-            pragma(msg, typeof(item).stringof, " TT is ", TT.stringof);
+            //pragma(msg, typeof(item).stringof, " TT is ", TT.stringof);
 
             size_t s = i * TT.sizeof;
             size_t e = (i + 1) * TT.sizeof;
