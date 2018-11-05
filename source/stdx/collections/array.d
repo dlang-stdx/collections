@@ -61,8 +61,8 @@ if (!is(T[] == void[]))
  */
 enum hasMember(T, string name) = __traits(hasMember, T, name);
 
-version(none)
-{
+//version(none)
+//{
 
 /**
  * Detect whether type `T` is an array (static or dynamic; for associative
@@ -150,7 +150,7 @@ template ModifyTypePreservingTQ(alias Modifier, T)
 enum bool isAggregateType(T) = is(T == struct) || is(T == union) ||
                                is(T == class) || is(T == interface);
 
-}
+//}
 
 /**
 Removes all qualifiers, if any, from type `T`.
@@ -206,6 +206,7 @@ enum bool isInputRange(R) =
     */
 
 
+version(none)
 unittest
 {
     alias R = typeof([1, 2]);
@@ -357,6 +358,32 @@ template ElementType(R)
         alias ElementType = void;
 }
 
+/**
+Yields `true` if `R` has a `length` member that returns a value of `size_t`
+type. `R` does not have to be a range. If `R` is a range, algorithms in the
+standard library are only guaranteed to support `length` with type `size_t`.
+
+Note that `length` is an optional primitive as no range must implement it. Some
+ranges do not store their length explicitly, some cannot compute it without
+actually exhausting the range (e.g. socket streams), and some other ranges may
+be infinite.
+
+Although narrow string types (`char[]`, `wchar[]`, and their qualified
+derivatives) do define a `length` property, `hasLength` yields `false` for them.
+This is because a narrow string's length does not reflect the number of
+characters, but instead the number of encoding units, and as such is not useful
+with range-oriented algorithms. To use strings as random-access ranges with
+length, use $(REF representation, std, string) or $(REF byCodeUnit, std, utf).
+*/
+template hasLength(R)
+{
+    static if (is(typeof(((R* r) => r.length)(null)) Length))
+        enum bool hasLength = is(Length == size_t);
+        //TODO: enum bool hasLength = is(Length == size_t) && !isNarrowString!R;
+    else
+        enum bool hasLength = false;
+}
+
 //}
 // End "Imports" from Phobos
 
@@ -438,9 +465,9 @@ struct Array(T)
     import std.experimental.allocator.building_blocks.affix_allocator;
     import std.experimental.allocator.mallocator;
 
-    import std.traits : isArray;
+    //import std.traits : isArray;
 
-    import std.range.primitives : /*isInputRange, isInfinite, ElementType,*/ hasLength;
+    //import std.range.primitives : /*isInputRange, isInfinite, ElementType,*/ hasLength;
 
     import std.conv : emplace;
 
