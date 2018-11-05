@@ -3,6 +3,135 @@ module stdx.collections.array;
 
 //import stdx.collections.common;
 
+// "Imports" from Phobos
+//{
+
+/**
+   Yields `true` if and only if `T` is an aggregate that defines
+   a symbol called `name`.
+ */
+enum hasMember(T, string name) = __traits(hasMember, T, name);
+
+version(none)
+{
+
+/**
+ * Detect whether type `T` is an array (static or dynamic; for associative
+ *  arrays see $(LREF isAssociativeArray)).
+ */
+enum bool isArray(T) = isStaticArray!T || isDynamicArray!T;
+
+/**
+ * Detect whether type `T` is a static array.
+ */
+enum bool isStaticArray(T) = __traits(isStaticArray, T);
+
+/**
+ * Detect whether type `T` is a dynamic array.
+ */
+enum bool isDynamicArray(T) = is(DynamicArrayTypeOf!T) && !isAggregateType!T;
+
+/*
+ */
+template DynamicArrayTypeOf(T)
+{
+    static if (is(AliasThisTypeOf!T AT) && !is(AT[] == AT))
+        alias X = DynamicArrayTypeOf!AT;
+    else
+        alias X = OriginalType!T;
+
+    static if (is(Unqual!X : E[], E) && !is(typeof({ enum n = X.length; })))
+    {
+        alias DynamicArrayTypeOf = X;
+    }
+    else
+        static assert(0, T.stringof~" is not a dynamic array");
+}
+
+// SomethingTypeOf
+private template AliasThisTypeOf(T)
+if (isAggregateType!T)
+{
+    alias members = AliasSeq!(__traits(getAliasThis, T));
+
+    static if (members.length == 1)
+    {
+        alias AliasThisTypeOf = typeof(__traits(getMember, T.init, members[0]));
+    }
+    else
+        static assert(0, T.stringof~" does not have alias this type");
+}
+
+template AliasSeq(TList...)
+{
+    alias AliasSeq = TList;
+}
+
+/**
+ * Strips off all `enum`s from type `T`.
+ */
+template OriginalType(T)
+{
+    template Impl(T)
+    {
+        static if (is(T U == enum)) alias Impl = OriginalType!U;
+        else                        alias Impl =              T;
+    }
+
+    alias OriginalType = ModifyTypePreservingTQ!(Impl, T);
+}
+
+// [For internal use]
+template ModifyTypePreservingTQ(alias Modifier, T)
+{
+         static if (is(T U ==          immutable U)) alias ModifyTypePreservingTQ =          immutable Modifier!U;
+    else static if (is(T U == shared inout const U)) alias ModifyTypePreservingTQ = shared inout const Modifier!U;
+    else static if (is(T U == shared inout       U)) alias ModifyTypePreservingTQ = shared inout       Modifier!U;
+    else static if (is(T U == shared       const U)) alias ModifyTypePreservingTQ = shared       const Modifier!U;
+    else static if (is(T U == shared             U)) alias ModifyTypePreservingTQ = shared             Modifier!U;
+    else static if (is(T U ==        inout const U)) alias ModifyTypePreservingTQ =        inout const Modifier!U;
+    else static if (is(T U ==        inout       U)) alias ModifyTypePreservingTQ =              inout Modifier!U;
+    else static if (is(T U ==              const U)) alias ModifyTypePreservingTQ =              const Modifier!U;
+    else                                             alias ModifyTypePreservingTQ =                    Modifier!T;
+}
+
+/**
+ * Detect whether type `T` is an aggregate type.
+ */
+enum bool isAggregateType(T) = is(T == struct) || is(T == union) ||
+                               is(T == class) || is(T == interface);
+
+}
+
+/**
+Removes all qualifiers, if any, from type `T`.
+ */
+template Unqual(T)
+{
+    version (none) // Error: recursive alias declaration @@@BUG1308@@@
+    {
+             static if (is(T U ==     const U)) alias Unqual = Unqual!U;
+        else static if (is(T U == immutable U)) alias Unqual = Unqual!U;
+        else static if (is(T U ==     inout U)) alias Unqual = Unqual!U;
+        else static if (is(T U ==    shared U)) alias Unqual = Unqual!U;
+        else                                    alias Unqual =        T;
+    }
+    else // workaround
+    {
+             static if (is(T U ==          immutable U)) alias Unqual = U;
+        else static if (is(T U == shared inout const U)) alias Unqual = U;
+        else static if (is(T U == shared inout       U)) alias Unqual = U;
+        else static if (is(T U == shared       const U)) alias Unqual = U;
+        else static if (is(T U == shared             U)) alias Unqual = U;
+        else static if (is(T U ==        inout const U)) alias Unqual = U;
+        else static if (is(T U ==        inout       U)) alias Unqual = U;
+        else static if (is(T U ==              const U)) alias Unqual = U;
+        else                                             alias Unqual = T;
+    }
+}
+
+//}
+
 // From common
 // {
 import std.range: isInputRange;
@@ -22,10 +151,9 @@ version(unittest)
     import std.experimental.allocator.mallocator;
     import std.experimental.allocator.building_blocks.affix_allocator;
     import std.experimental.allocator.building_blocks.stats_collector;
-    import std.experimental.allocator : allocatorObject, sharedAllocatorObject;
-    import std.experimental.allocator : make, dispose, stateSize;
+    import std.experimental.allocator : dispose, stateSize;
     import std.stdio;
-    import std.traits : hasMember;
+    //import std.traits : hasMember;
 
     private alias SCAlloc = AffixAllocator!(StatsCollector!(Mallocator, Options.bytesUsed), size_t);
     private alias SSCAlloc = AffixAllocator!(StatsCollector!(Mallocator, Options.bytesUsed), size_t);
@@ -79,14 +207,14 @@ version(unittest)
 ///
 struct Array(T)
 {
-    import std.experimental.allocator : make, dispose, stateSize;
+    import std.experimental.allocator : dispose, stateSize;
     import std.experimental.allocator.building_blocks.affix_allocator;
     import std.experimental.allocator.mallocator;
-    import std.traits : isImplicitlyConvertible, Unqual, isArray, hasMember;
+    import std.traits : isImplicitlyConvertible, /*Unqual,*/ isArray/*, hasMember*/;
     import std.range.primitives : isInputRange, isInfinite, ElementType, hasLength;
     import std.conv : emplace;
     import core.atomic : atomicOp;
-    import std.algorithm.mutation : move;
+    //import std.algorithm.mutation : move;
 
     package T[] _payload;
     package Unqual!T[] _support;
