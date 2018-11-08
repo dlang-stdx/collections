@@ -242,6 +242,335 @@ if (isInputRange!Collection)
     return collection;
 }
 
+// { Allocators
+
+/**
+Returns the size in bytes of the state that needs to be allocated to hold an
+object of type `T`. `stateSize!T` is zero for `struct`s that are not
+nested and have no nonstatic member variables.
+ */
+template stateSize(T)
+{
+    static if (is(T == class) || is(T == interface))
+        enum stateSize = __traits(classInstanceSize, T);
+    else static if (is(T == void))
+        enum size_t stateSize = 0;
+    else
+        enum stateSize = T.sizeof;
+}
+
+struct PrefixAllocator
+{
+    /**
+    The alignment is a static constant equal to `platformAlignment`, which
+    ensures proper alignment for any D data type.
+    */
+    enum uint alignment = size_t.alignof;
+    static enum prefixSize = size_t.sizeof;
+
+    @trusted @nogc nothrow pure
+    void[] allocate(size_t bytes) shared
+    {
+        import core.memory : pureMalloc;
+        if (!bytes) return null;
+        auto p = pureMalloc(bytes);
+
+        if (p is null) return null;
+        assert(cast(size_t) p % alignment == 0);
+        // Init reference count to 0
+        *(cast(size_t *) p) = 0;
+
+        return p[prefixSize .. prefixSize + bytes];
+    }
+
+    @system @nogc nothrow pure
+    bool deallocate(void[] b) shared
+    {
+        import core.memory : pureFree;
+        assert(b !is null);
+        pureFree(b.ptr - prefixSize);
+        return true;
+    }
+
+    /**
+    Returns the global instance of this allocator type. The C heap allocator is
+    thread-safe, therefore all of its methods and `it` itself are `shared`.
+    */
+    static shared PrefixAllocator instance;
+}
+
+struct StatsPrefixAllocator
+{
+    alias parent = static shared PrefixAllocator.instance;
+
+    size_t bytesUsed;
+
+    @trusted @nogc nothrow pure
+    void[] allocate(size_t bytes) shared
+    {
+        auto r = parent.allocate(bytes);
+        static if (is(typeof(this) == shared))
+        {
+            import core.atomic : atomicOp;
+            atomicOp!"+="(bytesUsed, r.length);
+        }
+        else
+        {
+            bytesUsed += r.length;
+        }
+        return r;
+    }
+
+    @system @nogc nothrow pure
+    bool deallocate(void[] b) shared
+    {
+        static if (is(typeof(this) == shared))
+        {
+            import core.atomic : atomicOp;
+            assert(atomicOp!">="(bytesUsed, b.length));
+            atomicOp!"-="(bytesUsed, b.length);
+        }
+        else
+        {
+            assert(bytesUsed >= b.length);
+            bytesUsed -= b.length;
+        }
+        return parent.deallocate(b);
+    }
+}
+
+template isAbstractClass(T...)
+if (T.length == 1)
+{
+    enum bool isAbstractClass = __traits(isAbstractClass, T[0]);
+}
+
+template isInnerClass(T)
+if (is(T == class))
+{
+    static if (is(typeof(T.outer)))
+        enum isInnerClass = __traits(isSame, typeof(T.outer), __traits(parent, T));
+    else
+        enum isInnerClass = false;
+}
+
+enum classInstanceAlignment(T) = size_t.alignof >= T.alignof ? size_t.alignof : T.alignof;
+
+T emplace(T, Args...)(T chunk, auto ref Args args)
+if (is(T == class))
+{
+    static assert(!isAbstractClass!T, T.stringof ~
+        " is abstract and it can't be emplaced");
+
+    // Initialize the object in its pre-ctor state
+    enum classSize = __traits(classInstanceSize, T);
+    (() @trusted => (cast(void*) chunk)[0 .. classSize] = typeid(T).initializer[])();
+
+    static if (isInnerClass!T)
+    {
+        static assert(Args.length > 0,
+            "Initializing an inner class requires a pointer to the outer class");
+        static assert(is(Args[0] : typeof(T.outer)),
+            "The first argument must be a pointer to the outer class");
+
+        chunk.outer = args[0];
+        alias args1 = args[1..$];
+    }
+    else alias args1 = args;
+
+    // Call the ctor if any
+    static if (is(typeof(chunk.__ctor(args1))))
+    {
+        // T defines a genuine constructor accepting args
+        // Go the classic route: write .init first, then call ctor
+        chunk.__ctor(args1);
+    }
+    else
+    {
+        static assert(args1.length == 0 && !is(typeof(&T.__ctor)),
+            "Don't know how to initialize an object of type "
+            ~ T.stringof ~ " with arguments " ~ typeof(args1).stringof);
+    }
+    return chunk;
+}
+
+T emplace(T, Args...)(void[] chunk, auto ref Args args)
+if (is(T == class))
+{
+    enum classSize = __traits(classInstanceSize, T);
+    testEmplaceChunk(chunk, classSize, classInstanceAlignment!T);
+    return emplace!T(cast(T)(chunk.ptr), args);
+}
+
+T* emplace(T, Args...)(void[] chunk, auto ref Args args)
+if (!is(T == class))
+{
+    testEmplaceChunk(chunk, T.sizeof, T.alignof);
+    emplaceRef!(T, Unqual!T)(*cast(Unqual!T*) chunk.ptr, args);
+    return cast(T*) chunk.ptr;
+}
+
+T* emplace(T)(T* chunk) @safe pure nothrow
+{
+    emplaceRef!T(*chunk);
+    return chunk;
+}
+
+T* emplace(T, Args...)(T* chunk, auto ref Args args)
+if (is(T == struct) || Args.length == 1)
+{
+    emplaceRef!T(*chunk, args);
+    return chunk;
+}
+
+package void emplaceRef(T, UT, Args...)(ref UT chunk, auto ref Args args)
+{
+    static if (args.length == 0)
+    {
+        static assert(is(typeof({static T i;})),
+            convFormat("Cannot emplace a %1$s because %1$s.this() is annotated with @disable.", T.stringof));
+        static if (is(T == class)) static assert(!isAbstractClass!T,
+            T.stringof ~ " is abstract and it can't be emplaced");
+        emplaceInitializer(chunk);
+    }
+    else static if (
+        !is(T == struct) && Args.length == 1 /* primitives, enums, arrays */
+        ||
+        Args.length == 1 && is(typeof({T t = args[0];})) /* conversions */
+        ||
+        is(typeof(T(args))) /* general constructors */)
+    {
+        static struct S
+        {
+            T payload;
+            this(ref Args x)
+            {
+                static if (Args.length == 1)
+                    static if (is(typeof(payload = x[0])))
+                        payload = x[0];
+                    else
+                        payload = T(x[0]);
+                else
+                    payload = T(x);
+            }
+        }
+        if (__ctfe)
+        {
+            static if (is(typeof(chunk = T(args))))
+                chunk = T(args);
+            else static if (args.length == 1 && is(typeof(chunk = args[0])))
+                chunk = args[0];
+            else assert(0, "CTFE emplace doesn't support "
+                ~ T.stringof ~ " from " ~ Args.stringof);
+        }
+        else
+        {
+            S* p = () @trusted { return cast(S*) &chunk; }();
+            static if (UT.sizeof > 0)
+                emplaceInitializer(*p);
+            p.__ctor(args);
+        }
+    }
+    else static if (is(typeof(chunk.__ctor(args))))
+    {
+        // This catches the rare case of local types that keep a frame pointer
+        emplaceInitializer(chunk);
+        chunk.__ctor(args);
+    }
+    else
+    {
+        //We can't emplace. Try to diagnose a disabled postblit.
+        static assert(!(Args.length == 1 && is(Args[0] : T)),
+            convFormat("Cannot emplace a %1$s because %1$s.this(this) is annotated with @disable.", T.stringof));
+
+        //We can't emplace.
+        static assert(false,
+            convFormat("%s cannot be emplaced from %s.", T.stringof, Args[].stringof));
+    }
+}
+// ditto
+package void emplaceRef(UT, Args...)(ref UT chunk, auto ref Args args)
+if (is(UT == Unqual!UT))
+{
+    emplaceRef!(UT, UT)(chunk, args);
+}
+
+//emplace helper functions
+private void emplaceInitializer(T)(scope ref T chunk) @trusted pure nothrow
+{
+    static if (__traits(isZeroInit, T))
+    {
+        import core.stdc.string : memset;
+        memset(&chunk, 0, T.sizeof);
+    }
+    else
+    {
+        import core.stdc.string : memcpy;
+        static immutable T init = T.init;
+        memcpy(&chunk, &init, T.sizeof);
+    }
+}
+
+private @nogc pure nothrow @safe
+void testEmplaceChunk(void[] chunk, size_t typeSize, size_t typeAlignment)
+{
+    assert(chunk.length >= typeSize, "emplace: Chunk size too small.");
+    assert((cast(size_t) chunk.ptr) % typeAlignment == 0, "emplace: Chunk is not aligned.");
+}
+
+enum hasElaborateDestructor(T) = __traits(compiles, { T t; t.__dtor(); })
+                                 ||  __traits(compiles, { T t; t.__xdtor(); });
+
+void dispose(A, T)(auto ref A alloc, auto ref T* p)
+{
+    static if (hasElaborateDestructor!T)
+    {
+        destroy(*p);
+    }
+    alloc.deallocate((cast(void*) p)[0 .. T.sizeof]);
+    static if (__traits(isRef, p))
+        p = null;
+}
+
+void dispose(A, T)(auto ref A alloc, auto ref T p)
+if (is(T == class) || is(T == interface))
+{
+    if (!p) return;
+    static if (is(T == interface))
+    {
+        version (Windows)
+        {
+            import core.sys.windows.unknwn : IUnknown;
+            static assert(!is(T: IUnknown), "COM interfaces can't be destroyed in "
+                ~ __PRETTY_FUNCTION__);
+        }
+        auto ob = cast(Object) p;
+    }
+    else
+        alias ob = p;
+    auto support = (cast(void*) ob)[0 .. typeid(ob).initializer.length];
+    destroy(p);
+    alloc.deallocate(support);
+    static if (__traits(isRef, p))
+        p = null;
+}
+
+void dispose(A, T)(auto ref A alloc, auto ref T[] array)
+{
+    static if (hasElaborateDestructor!(typeof(array[0])))
+    {
+        foreach (ref e; array)
+        {
+            destroy(e);
+        }
+    }
+    alloc.deallocate(array);
+    static if (__traits(isRef, array))
+        array = null;
+}
+
+// } Allocators
+
 debug(CollectionArray) import std.stdio;
 
 version(unittest)
@@ -249,7 +578,6 @@ version(unittest)
     import std.experimental.allocator.mallocator;
     import std.experimental.allocator.building_blocks.affix_allocator;
     import std.experimental.allocator.building_blocks.stats_collector;
-    import std.experimental.allocator : dispose, stateSize;
     import std.stdio;
 
     private alias SCAlloc = AffixAllocator!(StatsCollector!(Mallocator, Options.bytesUsed), size_t);
@@ -259,12 +587,12 @@ version(unittest)
     SSCAlloc _sallocator;
 
     nothrow pure @trusted
-    void[] pureAllocate(bool isShared, size_t n) /*const*/
+    void[] pureAllocate(bool isShared, size_t n)
     {
-        return (cast(void[] function(bool, size_t) /*const*/ nothrow pure)(&_allocate))(isShared, n);
+        return (cast(void[] function(bool, size_t) nothrow pure)(&_allocate))(isShared, n);
     }
 
-    void[] _allocate(bool isShared, size_t n) /*const*/
+    void[] _allocate(bool isShared, size_t n)
     {
         return isShared ? _sallocator.allocate(n) : _allocator.allocate(n);
     }
@@ -272,26 +600,24 @@ version(unittest)
     static if (hasMember!(typeof(_allocator), "expand"))
     {
         nothrow pure @trusted
-        bool pureExpand(bool isShared, ref void[] b, size_t delta) /*const*/
+        bool pureExpand(bool isShared, ref void[] b, size_t delta)
         {
-            return (cast(bool function(bool, ref void[], size_t) /*const*/ nothrow pure)(&_expand))(isShared, b, delta);
+            return (cast(bool function(bool, ref void[], size_t) nothrow pure)(&_expand))(isShared, b, delta);
         }
 
-        bool _expand(bool isShared, ref void[] b, size_t delta) /*const*/
+        bool _expand(bool isShared, ref void[] b, size_t delta)
         {
             return isShared ?  _sallocator.expand(b, delta) : _allocator.expand(b, delta);
         }
     }
 
     nothrow pure
-    //bool pureDispose(bool isShared, void[] b) [>const<]
-    void pureDispose(T)(bool isShared, T[] b) /*const*/
+    void pureDispose(T)(bool isShared, T[] b)
     {
-        return (cast(void function(bool, T[]) /*const*/ nothrow pure)(&_dispose!(T)))(isShared, b);
+        return (cast(void function(bool, T[]) nothrow pure)(&_dispose!(T)))(isShared, b);
     }
 
-    //bool _dispose(bool isShared, void[] b) [>const<]
-    void _dispose(T)(bool isShared, T[] b) /*const*/
+    void _dispose(T)(bool isShared, T[] b)
     {
         return isShared ?  _sallocator.dispose(b) : _allocator.dispose(b);
     }
@@ -300,11 +626,8 @@ version(unittest)
 ///
 struct Array(T)
 {
-    import std.experimental.allocator : dispose, stateSize;
     import std.experimental.allocator.building_blocks.affix_allocator;
     import std.experimental.allocator.mallocator;
-
-    import std.conv : emplace;
 
     import core.atomic : atomicOp;
 
@@ -432,18 +755,18 @@ private:
 
         version(unittest)
         {
-            void[] tmpSupport = (() @trusted => pureAllocate(_isShared, stuffLength * T.sizeof))();
+            void[] tmpSupport = (() @trusted => pureAllocate(_isShared, stuffLength * stateSize!T))();
         }
         else
         {
             void[] tmpSupport;
             if (_isShared)
             {
-                tmpSupport = (() @trusted => _sallocator.allocate(stuffLength * T.sizeof))();
+                tmpSupport = (() @trusted => _sallocator.allocate(stuffLength * stateSize!T))();
             }
             else
             {
-                tmpSupport = (() @trusted => _allocator.allocate(stuffLength * T.sizeof))();
+                tmpSupport = (() @trusted => _allocator.allocate(stuffLength * stateSize!T))();
             }
         }
 
@@ -455,8 +778,8 @@ private:
             alias TT = ElementType!(typeof(_payload));
             //pragma(msg, typeof(item).stringof, " TT is ", TT.stringof);
 
-            size_t s = i * TT.sizeof;
-            size_t e = (i + 1) * TT.sizeof;
+            size_t s = i * stateSize!TT;
+            size_t e = (i + 1) * stateSize!TT;
             void[] tmp = tmpSupport[s .. e];
             i++;
             (() @trusted => emplace!TT(tmp, item))();
@@ -576,8 +899,7 @@ public:
     // Begin Copy Ctors
     // {
 
-    this(ref typeof(this) rhs)
-    {
+    private static enum copyCtorIncRef = q{
         debug(CollectionArray)
         {
             writefln("Array.postblit: begin");
@@ -594,7 +916,32 @@ public:
             debug(CollectionArray) writefln("Array.postblit: Array %s has refcount: %s",
                     _support, *prefCount(_support));
         }
+    };
+
+    this(ref typeof(this) rhs)
+    {
+        mixin(copyCtorIncRef);
     }
+
+    // { Get a const obj
+
+    this(ref typeof(this) rhs) const
+    {
+        mixin(copyCtorIncRef);
+    }
+
+    this(const ref typeof(this) rhs) const
+    {
+        mixin(copyCtorIncRef);
+    }
+
+    this(immutable ref typeof(this) rhs) const
+    {
+        mixin(copyCtorIncRef);
+    }
+    // } Get a const obj
+
+    // { Get an immutable obj
 
     this(ref typeof(this) rhs) immutable
     {
@@ -602,11 +949,18 @@ public:
         mixin(immutableInsert!(typeof(rhs))("rhs"));
     }
 
-    this(ref typeof(this) rhs) const
+    this(const ref typeof(this) rhs) immutable
     {
         _isShared = rhs._isShared;
-        mixin(immutableInsert!(typeof(rhs))("rhs"));
+        mixin(immutableInsert!(typeof(rhs._payload))("rhs._payload"));
     }
+
+    this(immutable ref typeof(this) rhs) immutable
+    {
+        mixin(copyCtorIncRef);
+    }
+
+    // } Get an immutable obj
 
     // }
     // End Copy Ctors
@@ -792,11 +1146,11 @@ public:
             void[] buf = _support;
             version(unittest)
             {
-                auto successfulExpand = pureExpand(_isShared, buf, (n - capacity) * T.sizeof);
+                auto successfulExpand = pureExpand(_isShared, buf, (n - capacity) * stateSize!T);
             }
             else
             {
-                auto successfulExpand = _allocator.expand(buf, (n - capacity) * T.sizeof);
+                auto successfulExpand = _allocator.expand(buf, (n - capacity) * stateSize!T);
             }
 
             if (successfulExpand)
@@ -819,20 +1173,19 @@ public:
 
         version(unittest)
         {
-            auto tmpSupport = (() @trusted => cast(Unqual!T[])(pureAllocate(_isShared, n * T.sizeof)))();
+            auto tmpSupport = (() @trusted => cast(Unqual!T[])(pureAllocate(_isShared, n * stateSize!T)))();
         }
         else
         {
-            auto tmpSupport = (() @trusted => cast(Unqual!T[])(_allocator.allocate(n * T.sizeof)))();
+            auto tmpSupport = (() @trusted => cast(Unqual!T[])(_allocator.allocate(n * stateSize!T)))();
         }
         assert(tmpSupport !is null);
         for (size_t i = 0; i < tmpSupport.length; ++i)
         {
             if (i < _payload.length)
             {
-                //emplace(&tmpSupport[i], _payload[i]);
-                emplace(&tmpSupport[i]);
-                tmpSupport[i] = _payload[i];
+                emplace(&tmpSupport[i], _payload[i]);
+                //pragma(msg, typeof(&tmpSupport[i]).stringof);
             }
             else
             {
@@ -840,7 +1193,6 @@ public:
             }
         }
 
-        //tmpSupport[0 .. _payload.length] = _payload[];
         destroyUnused();
         _support = tmpSupport;
         addRef(_support);
@@ -909,11 +1261,11 @@ public:
 
         version(unittest)
         {
-            auto tmpSupport = (() @trusted => cast(Unqual!T[])(pureAllocate(_isShared, stuffLength * T.sizeof)))();
+            auto tmpSupport = (() @trusted => cast(Unqual!T[])(pureAllocate(_isShared, stuffLength * stateSize!T)))();
         }
         else
         {
-            auto tmpSupport = (() @trusted => cast(Unqual!T[])(_allocator.allocate(stuffLength * T.sizeof)))();
+            auto tmpSupport = (() @trusted => cast(Unqual!T[])(_allocator.allocate(stuffLength * stateSize!T)))();
         }
         assert(stuffLength == 0 || (stuffLength > 0 && tmpSupport !is null));
         for (size_t i = 0; i < tmpSupport.length; ++i)
@@ -1180,33 +1532,29 @@ public:
      *
      * Complexity: $(BIGOH n).
      */
-    version(none)
-    {
     template each(alias fun)
     {
         import std.typecons : Flag, Yes, No;
         import std.functional : unaryFun;
-        import stdx.collections.slist : SList;
 
         Flag!"each" each(this Q)()
         if (is (typeof(unaryFun!fun(T.init))))
         {
             alias fn = unaryFun!fun;
 
-            auto sl = SList!(const Array!T)(this);
-            while (!sl.empty && !sl.front.empty)
+            // Iterate through the underlying payload
+            // The array is kept alive (rc > 0) from the caller scope
+            foreach (ref e; this._payload)
             {
                 static if (!is(typeof(fn(T.init)) == Flag!"each"))
                 {
-                    cast(void) fn(sl.front.front);
+                    cast(void) fn(e);
                 }
                 else
                 {
-                    if (fn(sl.front.front) == No.each)
+                    if (fn(e) == No.each)
                         return No.each;
                 }
-                sl ~= sl.front.tail;
-                sl.popFront;
             }
             return Yes.each;
         }
@@ -1217,15 +1565,24 @@ public:
     @safe unittest
     {
         import std.typecons : Flag, Yes, No;
+        import std.conv;
 
-        auto ia = immutable Array!int([1, 2, 3]);
+        {
+            auto ia = immutable Array!int([3, 2, 1]);
 
-        static bool foo(int x) { return x > 0; }
-        static Flag!"each" bar(int x) { return x > 1 ? Yes.each : No.each; }
+            static bool foo(int x) { return x > 0; }
+            static Flag!"each" bar(int x) { return x > 1 ? Yes.each : No.each; }
 
-        assert(ia.each!foo == Yes.each);
-        assert(ia.each!bar == No.each);
-    }
+            assert(ia.each!foo == Yes.each);
+            assert(ia.each!bar == No.each);
+        }
+
+        size_t bytesUsed = _allocator.parent.bytesUsed;
+        assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
+                ~ to!string(bytesUsed) ~ " bytes");
+        bytesUsed = _sallocator.parent.bytesUsed;
+        assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
+                ~ to!string(bytesUsed) ~ " bytes");
     }
 
     //int opApply(int delegate(const ref T) dg) const
@@ -1271,9 +1628,12 @@ public:
         assert(!a.empty);
     }
 
-    // TODO: needs to know if _allocator is shared or not
-    // We also need to create a tmp array for all the elements
-    Array!T idup(this Q)();
+    // TODO: add unittest
+    immutable(Array!T) idup() const
+    {
+        auto r = immutable Array!T(this);
+        return r;
+    }
 
     /**
      * Perform a copy of the array. This will create a new array that will copy
@@ -1293,8 +1653,6 @@ public:
             scope(exit) writefln("Array.dup: end");
         }
         Array!T result;
-        // TODO: fixme - can we just do `result(this)` ?
-        //result._allocator = _allocator;
 
         static if (is(Q == immutable) || is(Q == const))
         {
@@ -2084,10 +2442,6 @@ void testCopyAndRef()
             ~ to!string(bytesUsed) ~ " bytes");
 }
 
-
-version(none)
-{ // imm-ctor
-
 version(unittest) private nothrow pure @safe
 void testImmutability()
 {
@@ -2122,6 +2476,7 @@ void testConstness()
     auto a = const Array!(int)(1, 2, 3);
     auto a2 = a;
     auto a3 = a2.save();
+    immutable Array!int a5 = a; // TODO: test rc for immutable from const
 
     assert(a2.front == 1);
     assert(a2[0] == a2.front);
@@ -2149,8 +2504,6 @@ void testConstness()
     assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
             ~ to!string(bytesUsed) ~ " bytes");
 }
-
-} // imm-ctor
 
 // TODO: FIXME PURE
 //version(unittest) private nothrow pure @safe
@@ -2210,8 +2563,6 @@ void testWithStruct()
             ~ to!string(bytesUsed) ~ " bytes and " ~ to!string(immBytes) ~ " imm bytes");
 }
 
-version(none) { // debug
-
 version(unittest) private nothrow pure @safe
 void testWithClass()
 {
@@ -2219,6 +2570,10 @@ void testWithClass()
     {
         int x;
         this(int x) { this.x = x; }
+
+        this(ref typeof(this) rhs) immutable { x = rhs.x; }
+
+        this(const ref typeof(this) rhs) immutable { x = rhs.x; }
     }
 
     MyClass c = new MyClass(10);
@@ -2246,8 +2601,6 @@ void testWithClass()
     assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
             ~ to!string(bytesUsed) ~ " bytes");
 }
-
-} // debug
 
 version(unittest) private nothrow pure @safe
 void testOpOverloads()
@@ -2336,48 +2689,3 @@ void testSlice()
     assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
             ~ to!string(bytesUsed) ~ " bytes");
 }
-
-///*@nogc*/ nothrow pure @safe
-version(none)
-unittest
-{
-    writefln("Bytes used %s", _allocator.parent.bytesUsed);
-    //writeln("Here");
-    {
-    Array!int arr = Array!int(1, 2, 3);
-    writefln("Here I have arr %s", arr);
-    writeln(arr[0]);
-    writeln(arr[1]);
-    writeln(arr[2]);
-    writeln(arr);
-
-    arr.insert(0, 1);
-    auto b = arr;
-    }
-    writefln("Bytes used %s", _allocator.parent.bytesUsed);
-
-    //a ~= 1;
-    //auto b = Array!int(1, 2, 3);
-    //pragma(msg, typeof(b));
-    //writeln(b);
-
-    import std.experimental.allocator : make, dispose, stateSize;
-
-    alias _allocator = AffixAllocator!(Mallocator, uint).instance;
-    alias _sallocator = shared AffixAllocator!(Mallocator, uint).instance;
-
-    auto a = _allocator.allocate(10);
-    assert(a.length == 10);
-    _allocator.prefix(a)++;
-    writeln(_allocator.prefix(a));
-
-    dispose(_allocator, a);
-    //_allocator.dispose(a);
-
-}
-
-//void main(string[] args) @nogc
-//{
-    //auto a = Array!int(1, 2, 3);
-    //auto b = a;
-//}
