@@ -1,8 +1,7 @@
 ///
 module stdx.collections.array;
 
-// "Imports" from Phobos
-//{
+// { "Imports" from Phobos
 
 // Range functions
 
@@ -232,16 +231,6 @@ template hasLength(R)
         enum bool hasLength = false;
 }
 
-//}
-// End "Imports" from Phobos
-
-auto tail(Collection)(Collection collection)
-if (isInputRange!Collection)
-{
-    collection.popFront();
-    return collection;
-}
-
 // { Allocators
 
 /**
@@ -257,116 +246,6 @@ template stateSize(T)
         enum size_t stateSize = 0;
     else
         enum stateSize = T.sizeof;
-}
-
-struct PrefixAllocator
-{
-    /**
-    The alignment is a static constant equal to `platformAlignment`, which
-    ensures proper alignment for any D data type.
-    */
-    enum uint alignment = size_t.alignof;
-    static enum prefixSize = size_t.sizeof;
-
-    version(unittest)
-    {
-        // During unittesting, we are keeping a count of the number of bytes allocated
-        size_t bytesUsed;
-    }
-
-    @trusted @nogc nothrow pure
-    void[] allocate(size_t bytes) shared
-    {
-        import core.memory : pureMalloc;
-        if (!bytes) return null;
-        auto p = pureMalloc(bytes + prefixSize);
-
-        if (p is null) return null;
-        assert(cast(size_t) p % alignment == 0);
-        // Init reference count to 0
-        *(cast(size_t *) p) = 0;
-
-        version(unittest)
-        {
-            static if (is(typeof(this) == shared))
-            {
-                import core.atomic : atomicOp;
-                atomicOp!"+="(bytesUsed, bytes);
-            }
-            else
-            {
-                bytesUsed += bytes;
-            }
-        }
-
-        return p[prefixSize .. prefixSize + bytes];
-    }
-
-    @system @nogc nothrow pure
-    bool deallocate(void[] b) shared
-    {
-        import core.memory : pureFree;
-        assert(b !is null);
-
-        version(unittest)
-        {
-            static if (is(typeof(this) == shared))
-            {
-                import core.atomic : atomicOp;
-                assert(atomicOp!">="(bytesUsed, b.length));
-                atomicOp!"-="(bytesUsed, b.length);
-            }
-            else
-            {
-                assert(bytesUsed >= b.length);
-                bytesUsed -= b.length;
-            }
-        }
-
-        pureFree(b.ptr - prefixSize);
-        return true;
-    }
-
-    private template Payload2Affix(Payload, Affix)
-    {
-        static if (is(Payload[] : void[]))
-            alias Payload2Affix = Affix;
-        else static if (is(Payload[] : shared(void)[]))
-            alias Payload2Affix = shared Affix;
-        else static if (is(Payload[] : immutable(void)[]))
-            alias Payload2Affix = shared Affix;
-        else static if (is(Payload[] : const(shared(void))[]))
-            alias Payload2Affix = shared Affix;
-        else static if (is(Payload[] : const(void)[]))
-            alias Payload2Affix = const Affix;
-        else
-            static assert(0, "Internal error for type " ~ Payload.stringof);
-    }
-
-    static auto ref prefix(T)(T[] b)
-    {
-        assert(b.ptr && (cast(size_t) b.ptr % alignment == 0));
-        return (cast(Payload2Affix!(T, size_t)*) b.ptr)[-1];
-    }
-
-    /**
-    Returns the global instance of this allocator type. The C heap allocator is
-    thread-safe, therefore all of its methods and `it` itself are `shared`.
-    */
-    static shared PrefixAllocator instance;
-}
-
-unittest
-{
-    shared PrefixAllocator a;
-    auto b = a.allocate(42);
-    assert(b.length == 42);
-    assert(a.bytesUsed == 42);
-    assert(a.prefix(b) == 0);
-    a.prefix(b)++;
-    assert(a.prefix(b) == 1);
-    a.deallocate(b);
-    assert(a.bytesUsed == 0);
 }
 
 template isAbstractClass(T...)
@@ -601,26 +480,172 @@ void dispose(A, T)(auto ref A alloc, auto ref T[] array)
 
 // } Allocators
 
-debug(CollectionArray) import std.stdio;
+// } End "Imports" from Phobos
+
+auto tail(Collection)(Collection collection)
+if (isInputRange!Collection)
+{
+    collection.popFront();
+    return collection;
+}
+
+auto equal(T, U)(T a, U b)
+if (is(ElementType!T : ElementType!U)
+     && (is(T : V[], V) || is(T : Array!V2, V2))
+     && (is(U : V4[], V4) || is(U : Array!V3, V3)))
+{
+    if (a.length != b.length) return false;
+
+    while (!a.empty)
+    {
+        if (a.front != b.front) return false;
+        a.popFront();
+        b.popFront();
+    }
+    return true;
+}
+
+@safe unittest
+{
+    auto a = [1, 2, 3];
+    auto b = Array!int(a);
+
+    assert(equal(a, a));
+    assert(equal(a, b));
+    assert(equal(b, a));
+    assert(equal(b, b));
+    a ~= 1;
+    assert(!equal(a, b));
+}
+
+struct PrefixAllocator
+{
+    /**
+    The alignment is a static constant equal to `platformAlignment`, which
+    ensures proper alignment for any D data type.
+    */
+    enum uint alignment = size_t.alignof;
+    static enum prefixSize = size_t.sizeof;
+
+    version(unittest)
+    {
+        // During unittesting, we are keeping a count of the number of bytes allocated
+        size_t bytesUsed;
+    }
+
+    @trusted @nogc nothrow pure
+    void[] allocate(size_t bytes) shared
+    {
+        import core.memory : pureMalloc;
+        if (!bytes) return null;
+        auto p = pureMalloc(bytes + prefixSize);
+
+        if (p is null) return null;
+        assert(cast(size_t) p % alignment == 0);
+        // Init reference count to 0
+        *(cast(size_t *) p) = 0;
+
+        version(unittest)
+        {
+            static if (is(typeof(this) == shared))
+            {
+                import core.atomic : atomicOp;
+                atomicOp!"+="(bytesUsed, bytes);
+            }
+            else
+            {
+                bytesUsed += bytes;
+            }
+        }
+
+        return p[prefixSize .. prefixSize + bytes];
+    }
+
+    @system @nogc nothrow pure
+    bool deallocate(void[] b) shared
+    {
+        import core.memory : pureFree;
+        assert(b !is null);
+
+        version(unittest)
+        {
+            static if (is(typeof(this) == shared))
+            {
+                import core.atomic : atomicOp;
+                assert(atomicOp!">="(bytesUsed, b.length));
+                atomicOp!"-="(bytesUsed, b.length);
+            }
+            else
+            {
+                assert(bytesUsed >= b.length);
+                bytesUsed -= b.length;
+            }
+        }
+
+        pureFree(b.ptr - prefixSize);
+        return true;
+    }
+
+    private template Payload2Affix(Payload, Affix)
+    {
+        static if (is(Payload[] : void[]))
+            alias Payload2Affix = Affix;
+        else static if (is(Payload[] : shared(void)[]))
+            alias Payload2Affix = shared Affix;
+        else static if (is(Payload[] : immutable(void)[]))
+            alias Payload2Affix = shared Affix;
+        else static if (is(Payload[] : const(shared(void))[]))
+            alias Payload2Affix = shared Affix;
+        else static if (is(Payload[] : const(void)[]))
+            alias Payload2Affix = const Affix;
+        else
+            static assert(0, "Internal error for type " ~ Payload.stringof);
+    }
+
+    static auto ref prefix(T)(T[] b)
+    {
+        assert(b.ptr && (cast(size_t) b.ptr % alignment == 0));
+        return (cast(Payload2Affix!(T, size_t)*) b.ptr)[-1];
+    }
+
+    /**
+    Returns the global instance of this allocator type. The C heap allocator is
+    thread-safe, therefore all of its methods and `it` itself are `shared`.
+    */
+    static shared PrefixAllocator instance;
+}
+
+@safe pure nothrow @nogc unittest
+{
+    shared PrefixAllocator a;
+    auto b = a.allocate(42);
+    assert(b.length == 42);
+    assert(a.bytesUsed == 42);
+    () @trusted {
+        assert(a.prefix(b) == 0);
+        a.prefix(b)++;
+        assert(a.prefix(b) == 1);
+        a.deallocate(b);
+    }();
+    assert(a.bytesUsed == 0);
+}
+
 
 version(unittest)
 {
-    import std.stdio;
-
-    //private alias SCAlloc = AffixAllocator!(StatsCollector!(Mallocator, Options.bytesUsed), size_t);
-    //private alias SSCAlloc = AffixAllocator!(StatsCollector!(Mallocator, Options.bytesUsed), size_t);
     private alias SCAlloc = shared PrefixAllocator;
     private alias SSCAlloc = shared PrefixAllocator;
 
     SCAlloc _allocator;
     SSCAlloc _sallocator;
 
-    nothrow pure @trusted
+    @nogc nothrow pure @trusted
     void[] pureAllocate(bool isShared, size_t n)
     {
-        return (cast(void[] function(bool, size_t) nothrow pure)(&_allocate))(isShared, n);
+        return (cast(void[] function(bool, size_t) @nogc nothrow pure)(&_allocate))(isShared, n);
     }
 
+    @nogc nothrow @safe
     void[] _allocate(bool isShared, size_t n)
     {
         return isShared ? _sallocator.allocate(n) : _allocator.allocate(n);
@@ -628,24 +653,26 @@ version(unittest)
 
     static if (hasMember!(typeof(_allocator), "expand"))
     {
-        nothrow pure @trusted
+        @nogc nothrow pure @trusted
         bool pureExpand(bool isShared, ref void[] b, size_t delta)
         {
-            return (cast(bool function(bool, ref void[], size_t) nothrow pure)(&_expand))(isShared, b, delta);
+            return (cast(bool function(bool, ref void[], size_t) @nogc nothrow pure)(&_expand))(isShared, b, delta);
         }
 
+        @nogc nothrow @safe
         bool _expand(bool isShared, ref void[] b, size_t delta)
         {
             return isShared ?  _sallocator.expand(b, delta) : _allocator.expand(b, delta);
         }
     }
 
-    nothrow pure
+    @nogc nothrow pure
     void pureDispose(T)(bool isShared, T[] b)
     {
-        return (cast(void function(bool, T[]) nothrow pure)(&_dispose!(T)))(isShared, b);
+        return (cast(void function(bool, T[]) @nogc nothrow pure)(&_dispose!(T)))(isShared, b);
     }
 
+    @nogc nothrow
     void _dispose(T)(bool isShared, T[] b)
     {
         return isShared ?  _sallocator.dispose(b) : _allocator.dispose(b);
@@ -665,8 +692,8 @@ struct Array(T)
     }
     else
     {
-        alias _allocator = AffixAllocator!(Mallocator, size_t).instance;
-        alias _sallocator = shared AffixAllocator!(Mallocator, size_t).instance;
+        alias _allocator = shared PrefixAllocator.instance;
+        alias _sallocator = shared PrefixAllocator.instance;
     }
 
 private:
@@ -690,45 +717,32 @@ private:
         }
     }
 
-        size_t foo(string op, T)(const T[] support, size_t val) const
+    private size_t _opPrefix(string op, T)(const T[] support, size_t val) const
+    {
+        assert(support !is null);
+        if (_isShared)
         {
-            assert(support !is null);
-            if (_isShared)
-            {
-                return cast(size_t)(atomicOp!op(*cast(shared size_t *)&_sallocator.prefix(support), val));
-            }
-            else
-            {
-                mixin("return cast(size_t)(*cast(size_t *)&_allocator.prefix(support)" ~ op ~ "val);");
-            }
+            return cast(size_t)(atomicOp!op(*cast(shared size_t *)&_sallocator.prefix(support), val));
         }
+        else
+        {
+            mixin("return cast(size_t)(*cast(size_t *)&_allocator.prefix(support)" ~ op ~ "val);");
+        }
+    }
 
     @nogc nothrow pure @trusted
     size_t opPrefix(string op, T)(const T[] support, size_t val) const
     if ((op == "+=") || (op == "-="))
     {
 
-        return (cast(size_t delegate(const T[], size_t) const @nogc nothrow pure)(&foo!(op, T)))(support, val);
+        return (cast(size_t delegate(const T[], size_t) const @nogc nothrow pure)(&_opPrefix!(op, T)))(support, val);
     }
-
-        size_t bar(string op, T)(const T[] support, size_t val) const
-        {
-            assert(support !is null);
-            if (_isShared)
-            {
-                return cast(size_t)(atomicOp!op(*cast(shared size_t *)&_sallocator.prefix(support), val));
-            }
-            else
-            {
-                mixin("return cast(size_t)(*cast(size_t *)&_allocator.prefix(support)" ~ op ~ "val);");
-            }
-        }
 
     @nogc nothrow pure @trusted
     size_t opCmpPrefix(string op, T)(const T[] support, size_t val) const
     if ((op == "==") || (op == "<=") || (op == "<") || (op == ">=") || (op == ">"))
     {
-        return (cast(size_t delegate(const T[], size_t) const @nogc nothrow pure)(&bar!(op, T)))(support, val);
+        return (cast(size_t delegate(const T[], size_t) const @nogc nothrow pure)(&_opPrefix!(op, T)))(support, val);
     }
 
     @nogc nothrow pure @trusted
@@ -743,24 +757,20 @@ private:
         // Will be optimized away, but the type system infers T's safety
         if (0) { T t = T.init; }
 
-        //writefln("Enter delRef with support rc %s", pref());
-        //scope(exit) writefln("Exit delRef with support rc %s", pref());
-
         assert(support !is null);
-        () @trusted {
         if (opPrefix!("-=")(support, 1) == 0)
         {
-            //() @trusted { dispose(_allocator, support); }();
-            version(unittest)
-            {
-                pureDispose(_isShared, support);
-            }
-            else
-            {
-                _allocator.dispose(support);
-            }
+            () @trusted {
+                version(unittest)
+                {
+                    pureDispose(_isShared, support);
+                }
+                else
+                {
+                    _allocator.dispose(support);
+                }
+            }();
         }
-        }();
     }
 
     static string immutableInsert(StuffType)(string stuff)
@@ -866,8 +876,6 @@ public:
     static if (is(T == int))
     @safe unittest
     {
-        import std.algorithm.comparison : equal;
-
         // Create a list from a list of ints
         {
             auto a = Array!int(1, 2, 3);
@@ -1018,7 +1026,7 @@ public:
     }
 
     static if (is(T == int))
-    nothrow pure @safe unittest
+    @nogc nothrow pure @safe unittest
     {
         auto a = Array!int(1, 2, 3);
 
@@ -1164,9 +1172,8 @@ public:
 
         if (n <= capacity) { return; }
 
-        // TODO: fixme - cmp support with 0(defult init) and 1(init with values or stuff)
         static if (hasMember!(typeof(_allocator), "expand"))
-        if (_support && opCmpPrefix!"=="(_support, 0))
+        if (_support && opCmpPrefix!"=="(_support, 1))
         {
             void[] buf = _support;
             version(unittest)
@@ -1198,7 +1205,7 @@ public:
 
         version(unittest)
         {
-            auto tmpSupport = (() @trusted => cast(Unqual!T[])(pureAllocate(_isShared, n * stateSize!T)))();
+            auto tmpSupport = (() @trusted  => cast(Unqual!T[])(pureAllocate(_isShared, n * stateSize!T)))();
         }
         else
         {
@@ -1229,8 +1236,6 @@ public:
     static if (is(T == int))
     @safe unittest
     {
-        import std.algorithm.comparison : equal;
-
         auto stuff = [1, 2, 3];
         Array!int a;
         a.reserve(stuff.length);
@@ -1363,8 +1368,6 @@ public:
     static if (is(T == int))
     @safe unittest
     {
-        import std.algorithm.comparison : equal;
-
         Array!int a;
         assert(a.empty);
 
@@ -1543,28 +1546,27 @@ public:
      * arrays.
      *
      * Normally, the entire array is iterated. If partial iteration (early stopping)
-     * is desired, `fun` needs to return a value of type
-     * $(REF Flag, std,typecons)`!"each"` (`Yes.each` to continue iteration, or
-     * `No.each` to stop).
+     * is desired, `fun` needs to return a value of type `int` (`-1` to stop, or
+     * anything else to continue the iteration.
      *
      * Params:
      *      fun = unary function to apply on each element of the array.
      *
      * Returns:
-     *      `Yes.each` if it has iterated through all the elements in the array,
-     *      or `No.each` otherwise.
+     *      `true` if it has iterated through all the elements in the array, or
+     *      `false` otherwise.
      *
      * Complexity: $(BIGOH n).
      */
     template each(alias fun)
     {
-        import std.typecons : Flag, Yes, No;
-        import std.functional : unaryFun;
+        //import std.functional : unaryFun;
 
         bool each(this Q)()
-        if (is (typeof(unaryFun!fun(T.init))))
+        //if (is (typeof(unaryFun!fun(T.init))))
         {
-            alias fn = unaryFun!fun;
+            //alias fn = unaryFun!fun;
+            alias fn = fun;
 
             // Iterate through the underlying payload
             // The array is kept alive (rc > 0) from the caller scope
@@ -1588,8 +1590,17 @@ public:
     static if (is(T == int))
     @safe unittest
     {
-        import std.conv;
+        auto ia = immutable Array!int([3, 2, 1]);
 
+        static bool foo(int x) { return x > 0; }
+        static int bar(int x) { return x > 1 ? 1 : -1; }
+
+        assert(ia.each!foo == true);
+        assert(ia.each!bar == false);
+    }
+
+    @safe unittest
+    {
         {
             auto ia = immutable Array!int([3, 2, 1]);
 
@@ -1600,12 +1611,8 @@ public:
             assert(ia.each!bar == false);
         }
 
-        size_t bytesUsed = _allocator.bytesUsed;
-        assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
-        bytesUsed = _sallocator.bytesUsed;
-        assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-                ~ to!string(bytesUsed) ~ " bytes");
+        assert(_allocator.bytesUsed == 0, "Array ref count leaks memory");
+        assert(_sallocator.bytesUsed == 0, "Array ref count leaks memory");
     }
 
     //int opApply(int delegate(const ref T) dg) const
@@ -1651,11 +1658,44 @@ public:
         assert(!a.empty);
     }
 
-    // TODO: add unittest
-    immutable(Array!T) idup() const
+    /**
+     * Perform an immutable copy of the array. This will create a new array that
+     * will copy the elements of the current array. This will `NOT` call `dup` on
+     * the elements of the array, regardless if `T` defines it or not. If the array
+     * is already immutable, this will just create a new reference to it.
+     *
+     * Returns:
+     *      an immutable array.
+     *
+     * Complexity: $(BIGOH n).
+     */
+    immutable(Array!T) idup(this Q)()
     {
         auto r = immutable Array!T(this);
         return r;
+    }
+
+    ///
+    static if (is(T == int))
+    @safe unittest
+    {
+        {
+            auto a = Array!(int)(1, 2, 3);
+            auto a2 = a.idup();
+            static assert (is(typeof(a2) == immutable));
+        }
+
+        {
+            auto a = const Array!(int)(1, 2, 3);
+            auto a2 = a.idup();
+            static assert (is(typeof(a2) == immutable));
+        }
+
+        {
+            auto a = immutable Array!(int)(1, 2, 3);
+            auto a2 = a.idup();
+            static assert (is(typeof(a2) == immutable));
+        }
     }
 
     /**
@@ -1696,8 +1736,6 @@ public:
     static if (is(T == int))
     @safe unittest
     {
-        import std.algorithm.comparison : equal;
-
         auto stuff = [1, 2, 3];
         auto a = immutable Array!int(stuff);
         auto aDup = a.dup;
@@ -1761,8 +1799,6 @@ public:
     static if (is(T == int))
     @safe unittest
     {
-        import std.algorithm.comparison : equal;
-
         auto stuff = [1, 2, 3];
         auto a = Array!int(stuff);
         assert(equal(a[], stuff));
@@ -1889,7 +1925,6 @@ public:
     static if (is(T == int))
     @safe unittest
     {
-        import std.algorithm.comparison : equal;
         auto a = Array!int([1, 2, 3]);
         a[] = 0;
         assert(a.equal([0, 0, 0]));
@@ -1924,7 +1959,6 @@ public:
     static if (is(T == int))
     @safe unittest
     {
-        import std.algorithm.comparison : equal;
         auto a = Array!int([1, 2, 3, 4, 5, 6]);
         a[1 .. 3] = 0;
         assert(a.equal([1, 0, 0, 4, 5, 6]));
@@ -2013,8 +2047,6 @@ public:
     static if (is(T == int))
     @safe unittest
     {
-        import std.algorithm.comparison : equal;
-
         auto a = Array!int(1);
         auto a2 = a ~ 2;
 
@@ -2071,8 +2103,6 @@ public:
     static if (is(T == int))
     @safe unittest
     {
-        import std.algorithm.comparison : equal;
-
         auto a = Array!int(1);
         auto a2 = Array!int(1, 2);
 
@@ -2085,7 +2115,6 @@ public:
     static if (is(T == int))
     @safe unittest
     {
-        import std.algorithm.comparison : equal;
         auto arr = Array!int(1, 2, 3, 4, 5, 6);
         auto arr1 = arr[1 .. $];
         auto arr2 = arr[3 .. $];
@@ -2129,8 +2158,6 @@ public:
     static if (is(T == int))
     @safe unittest
     {
-        import std.algorithm.comparison : equal;
-
         Array!int a;
         auto a2 = Array!int(4, 5);
         assert(a.empty);
@@ -2149,7 +2176,6 @@ public:
     ///
     bool opEquals()(auto ref typeof(this) rhs) const
     {
-        import std.algorithm.comparison : equal;
         return _support.equal(rhs);
     }
 
@@ -2172,12 +2198,9 @@ public:
     int opCmp(U)(auto ref U rhs)
     if (isInputRange!U && isImplicitlyConvertible!(ElementType!U, T))
     {
-        import std.algorithm.comparison : min, equal;
-        import std.math : sgn;
-        import std.range.primitives : empty, front, popFront;
         auto r1 = this;
         auto r2 = rhs;
-        for (;!r1.empty && !r2.empty; r1.popFront, r2.popFront)
+        for (; !r1.empty && !r2.empty; r1.popFront, r2.popFront)
         {
             if (r1.front < r2.front)
                 return -1;
@@ -2244,8 +2267,6 @@ public:
 version(unittest) private nothrow pure @safe
 void testConcatAndAppend()
 {
-    import std.algorithm.comparison : equal;
-
     auto a = Array!(int)(1, 2, 3);
     Array!(int) a2 = Array!(int)();
 
@@ -2290,26 +2311,16 @@ void testConcatAndAppend()
 
 @safe unittest
 {
-    import std.conv;
-
     () nothrow pure @safe {
         testConcatAndAppend();
     }();
-
-    size_t bytesUsed = _allocator.bytesUsed;
-    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-            ~ to!string(bytesUsed) ~ " bytes");
-    bytesUsed = _sallocator.bytesUsed;
-    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-            ~ to!string(bytesUsed) ~ " bytes");
+    assert(_allocator.bytesUsed == 0, "Array ref count leaks memory");
+    assert(_sallocator.bytesUsed == 0, "Array ref count leaks memory");
 }
 
 version(unittest) private nothrow pure @safe
 void testSimple()
 {
-    import std.algorithm.comparison : equal;
-    import std.algorithm.searching : canFind;
-
     auto a = Array!int();
     assert(a.empty);
     assert(a.isUnique);
@@ -2342,33 +2353,20 @@ void testSimple()
     assert(aTail.front == 8);
     assert(a.tail.front == 8);
     assert(!a.isUnique);
-
-    assert(canFind(a, 2));
-    assert(!canFind(a, -10));
 }
 
 @safe unittest
 {
-    import std.conv;
-
     () nothrow pure @safe {
         testSimple();
     }();
-
-    size_t bytesUsed = _allocator.bytesUsed;
-    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-            ~ to!string(bytesUsed) ~ " bytes");
-    bytesUsed = _sallocator.bytesUsed;
-    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-            ~ to!string(bytesUsed) ~ " bytes");
+    assert(_allocator.bytesUsed == 0, "Array ref count leaks memory");
+    assert(_sallocator.bytesUsed == 0, "Array ref count leaks memory");
 }
 
 version(unittest) private nothrow pure @safe
 void testSimpleImmutable()
 {
-    import std.algorithm.comparison : equal;
-    import std.algorithm.searching : canFind;
-
     auto a = Array!(immutable int)();
     assert(a.empty);
 
@@ -2394,32 +2392,20 @@ void testSimpleImmutable()
 
     // Cannot modify immutable values
     static assert(!__traits(compiles, a.front = 9));
-
-    assert(canFind(a, 2));
-    assert(!canFind(a, -10));
 }
 
 @safe unittest
 {
-    import std.conv;
-
     () nothrow pure @safe {
         testSimpleImmutable();
     }();
-
-    size_t bytesUsed = _allocator.bytesUsed;
-    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-            ~ to!string(bytesUsed) ~ " bytes");
-    bytesUsed = _sallocator.bytesUsed;
-    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-            ~ to!string(bytesUsed) ~ " bytes");
+    assert(_allocator.bytesUsed == 0, "Array ref count leaks memory");
+    assert(_sallocator.bytesUsed == 0, "Array ref count leaks memory");
 }
 
 version(unittest) private nothrow pure @safe
 void testCopyAndRef()
 {
-    import std.algorithm.comparison : equal;
-
     auto aFromList = Array!int(1, 2, 3);
     auto aFromRange = Array!int(aFromList);
     assert(equal(aFromList, aFromRange));
@@ -2451,25 +2437,16 @@ void testCopyAndRef()
 
 @safe unittest
 {
-    import std.conv;
-
     () nothrow pure @safe {
         testCopyAndRef();
     }();
-
-    size_t bytesUsed = _allocator.bytesUsed;
-    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-            ~ to!string(bytesUsed) ~ " bytes");
-    bytesUsed = _sallocator.bytesUsed;
-    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-            ~ to!string(bytesUsed) ~ " bytes");
+    assert(_allocator.bytesUsed == 0, "Array ref count leaks memory");
+    assert(_sallocator.bytesUsed == 0, "Array ref count leaks memory");
 }
 
 version(unittest) private nothrow pure @safe
 void testImmutability()
 {
-    import std.algorithm.comparison : equal;
-
     auto a = immutable Array!(int)(1, 2, 3);
     auto a2 = a;
     auto a3 = a2.save();
@@ -2491,6 +2468,28 @@ void testImmutability()
     assert(a5.front == 2);
     assert(a.front == 1);
     assert(equal(a5, [2, 2, 3]));
+
+    // Create immtable copies from mutable, const and immutable
+    {
+        auto aa = Array!(int)(1, 2, 3);
+        auto aa2 = aa.idup();
+        assert(aa.opCmpPrefix!"=="(aa._support, 1));
+        assert(aa2.opCmpPrefix!"=="(aa2._support, 1));
+    }
+
+    {
+        auto aa = const Array!(int)(1, 2, 3);
+        auto aa2 = aa.idup();
+        assert(aa.opCmpPrefix!"=="(aa._support, 1));
+        assert(aa2.opCmpPrefix!"=="(aa2._support, 1));
+    }
+
+    {
+        auto aa = immutable Array!(int)(1, 2, 3);
+        auto aa2 = aa.idup();
+        assert(aa.opCmpPrefix!"=="(aa._support, 2));
+        assert(aa2.opCmpPrefix!"=="(aa2._support, 2));
+    }
 }
 
 version(unittest) private nothrow pure @safe
@@ -2499,7 +2498,9 @@ void testConstness()
     auto a = const Array!(int)(1, 2, 3);
     auto a2 = a;
     auto a3 = a2.save();
-    immutable Array!int a5 = a; // TODO: test rc for immutable from const
+    immutable Array!int a5 = a;
+    assert(a5.opCmpPrefix!"=="(a5._support, 1));
+    assert(a.opCmpPrefix!"=="(a._support, 3));
 
     assert(a2.front == 1);
     assert(a2[0] == a2.front);
@@ -2513,34 +2514,23 @@ void testConstness()
 
 @safe unittest
 {
-    import std.conv;
-
     () nothrow pure @safe {
         testImmutability();
         testConstness();
     }();
-
-    size_t bytesUsed = _allocator.bytesUsed;
-    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-            ~ to!string(bytesUsed) ~ " bytes");
-    bytesUsed = _sallocator.bytesUsed;
-    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-            ~ to!string(bytesUsed) ~ " bytes");
+    assert(_allocator.bytesUsed == 0, "Array ref count leaks memory");
+    assert(_sallocator.bytesUsed == 0, "Array ref count leaks memory");
 }
 
-// TODO: FIXME PURE
-//version(unittest) private nothrow pure @safe
-version(unittest)
+version(unittest) private nothrow pure @safe
 void testWithStruct()
 {
-    import std.algorithm.comparison : equal;
-
     auto array = Array!int(1, 2, 3);
     {
-        assert(array.pref() == 1);
+        assert(array.opCmpPrefix!"=="(array._support, 1));
 
         auto arrayOfArrays = Array!(Array!int)(array);
-        assert(array.pref() == 2);
+        assert(array.opCmpPrefix!"=="(array._support, 2));
         assert(equal(arrayOfArrays.front, [1, 2, 3]));
         arrayOfArrays.front.front = 2;
         assert(equal(arrayOfArrays.front, [2, 2, 3]));
@@ -2551,39 +2541,25 @@ void testWithStruct()
 
         // immutable is transitive, so it must iterate over array and
         // create a copy, and not set a ref
-        assert(array.pref() == 2);
+        assert(array.opCmpPrefix!"=="(array._support, 2));
         array.front = 3;
         assert(immArrayOfArrays.front.front == 2);
-        assert(immArrayOfArrays.pref() == 1);
-        assert(immArrayOfArrays.front.pref() == 1);
+        assert(immArrayOfArrays.opCmpPrefix!"=="(immArrayOfArrays._support, 1));
+        assert(immArrayOfArrays.front.opCmpPrefix!"=="(immArrayOfArrays.front._support, 1));
         static assert(!__traits(compiles, immArrayOfArrays.front.front = 2));
         static assert(!__traits(compiles, immArrayOfArrays.front = array));
     }
-    assert(array.pref() == 1);
+    assert(array.opCmpPrefix!"=="(array._support, 1));
     assert(equal(array, [3, 2, 3]));
 }
 
 @safe unittest
 {
-    import std.conv;
-
-    assert(_allocator.bytesUsed == 0);
-    //() nothrow pure @safe {
-    () @trusted {
+    () nothrow pure @safe {
         testWithStruct();
     }();
-
-    size_t bytesUsed = _allocator.bytesUsed;
-    size_t immBytes = _sallocator.bytesUsed;
-    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-            ~ to!string(bytesUsed) ~ " bytes and " ~ to!string(immBytes) ~ " imm bytes");
-
-    immBytes = _sallocator.bytesUsed;
-    //assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-            //~ to!string(bytesUsed) ~ " bytes");
-
-    assert(immBytes == 0, "Array ref count leaks memory; leaked "
-            ~ to!string(bytesUsed) ~ " bytes and " ~ to!string(immBytes) ~ " imm bytes");
+    assert(_allocator.bytesUsed == 0, "Array ref count leaks memory");
+    assert(_sallocator.bytesUsed == 0, "Array ref count leaks memory");
 }
 
 version(unittest) private nothrow pure @safe
@@ -2611,21 +2587,14 @@ void testWithClass()
 
 @safe unittest
 {
-    import std.conv;
-
     () nothrow pure @safe {
         testWithClass();
     }();
-
-    size_t bytesUsed = _allocator.bytesUsed;
-    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-            ~ to!string(bytesUsed) ~ " bytes");
-    bytesUsed = _sallocator.bytesUsed;
-    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-            ~ to!string(bytesUsed) ~ " bytes");
+    assert(_allocator.bytesUsed == 0, "Array ref count leaks memory");
+    assert(_sallocator.bytesUsed == 0, "Array ref count leaks memory");
 }
 
-version(unittest) private nothrow pure @safe
+version(unittest) private @nogc nothrow pure @safe
 void testOpOverloads()
 {
     auto a = Array!int(1, 2, 3, 4);
@@ -2658,25 +2627,16 @@ void testOpOverloads()
 
 @safe unittest
 {
-    import std.conv;
-
-    () nothrow pure @safe {
+    () @nogc nothrow pure @safe {
         testOpOverloads();
     }();
-
-    size_t bytesUsed = _allocator.bytesUsed;
-    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-            ~ to!string(bytesUsed) ~ " bytes");
-    bytesUsed = _sallocator.bytesUsed;
-    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-            ~ to!string(bytesUsed) ~ " bytes");
+    assert(_allocator.bytesUsed == 0, "Array ref count leaks memory");
+    assert(_sallocator.bytesUsed == 0, "Array ref count leaks memory");
 }
 
 version(unittest) private nothrow pure @safe
 void testSlice()
 {
-    import std.algorithm.comparison : equal;
-
     auto a = Array!int(1, 2, 3, 4);
     auto b = a[];
     assert(equal(a, b));
@@ -2699,16 +2659,9 @@ void testSlice()
 
 @safe unittest
 {
-    import std.conv;
-
     () nothrow pure @safe {
         testSlice();
     }();
-
-    size_t bytesUsed = _allocator.bytesUsed;
-    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-            ~ to!string(bytesUsed) ~ " bytes");
-    bytesUsed = _sallocator.bytesUsed;
-    assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
-            ~ to!string(bytesUsed) ~ " bytes");
+    assert(_allocator.bytesUsed == 0, "Array ref count leaks memory");
+    assert(_sallocator.bytesUsed == 0, "Array ref count leaks memory");
 }
