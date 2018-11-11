@@ -268,17 +268,36 @@ struct PrefixAllocator
     enum uint alignment = size_t.alignof;
     static enum prefixSize = size_t.sizeof;
 
+    version(unittest)
+    {
+        // During unittesting, we are keeping a count of the number of bytes allocated
+        size_t bytesUsed;
+    }
+
     @trusted @nogc nothrow pure
     void[] allocate(size_t bytes) shared
     {
         import core.memory : pureMalloc;
         if (!bytes) return null;
-        auto p = pureMalloc(bytes);
+        auto p = pureMalloc(bytes + prefixSize);
 
         if (p is null) return null;
         assert(cast(size_t) p % alignment == 0);
         // Init reference count to 0
         *(cast(size_t *) p) = 0;
+
+        version(unittest)
+        {
+            static if (is(typeof(this) == shared))
+            {
+                import core.atomic : atomicOp;
+                atomicOp!"+="(bytesUsed, bytes);
+            }
+            else
+            {
+                bytesUsed += bytes;
+            }
+        }
 
         return p[prefixSize .. prefixSize + bytes];
     }
@@ -288,8 +307,46 @@ struct PrefixAllocator
     {
         import core.memory : pureFree;
         assert(b !is null);
+
+        version(unittest)
+        {
+            static if (is(typeof(this) == shared))
+            {
+                import core.atomic : atomicOp;
+                assert(atomicOp!">="(bytesUsed, b.length));
+                atomicOp!"-="(bytesUsed, b.length);
+            }
+            else
+            {
+                assert(bytesUsed >= b.length);
+                bytesUsed -= b.length;
+            }
+        }
+
         pureFree(b.ptr - prefixSize);
         return true;
+    }
+
+    private template Payload2Affix(Payload, Affix)
+    {
+        static if (is(Payload[] : void[]))
+            alias Payload2Affix = Affix;
+        else static if (is(Payload[] : shared(void)[]))
+            alias Payload2Affix = shared Affix;
+        else static if (is(Payload[] : immutable(void)[]))
+            alias Payload2Affix = shared Affix;
+        else static if (is(Payload[] : const(shared(void))[]))
+            alias Payload2Affix = shared Affix;
+        else static if (is(Payload[] : const(void)[]))
+            alias Payload2Affix = const Affix;
+        else
+            static assert(0, "Internal error for type " ~ Payload.stringof);
+    }
+
+    static auto ref prefix(T)(T[] b)
+    {
+        assert(b.ptr && (cast(size_t) b.ptr % alignment == 0));
+        return (cast(Payload2Affix!(T, size_t)*) b.ptr)[-1];
     }
 
     /**
@@ -299,44 +356,17 @@ struct PrefixAllocator
     static shared PrefixAllocator instance;
 }
 
-struct StatsPrefixAllocator
+unittest
 {
-    alias parent = static shared PrefixAllocator.instance;
-
-    size_t bytesUsed;
-
-    @trusted @nogc nothrow pure
-    void[] allocate(size_t bytes) shared
-    {
-        auto r = parent.allocate(bytes);
-        static if (is(typeof(this) == shared))
-        {
-            import core.atomic : atomicOp;
-            atomicOp!"+="(bytesUsed, r.length);
-        }
-        else
-        {
-            bytesUsed += r.length;
-        }
-        return r;
-    }
-
-    @system @nogc nothrow pure
-    bool deallocate(void[] b) shared
-    {
-        static if (is(typeof(this) == shared))
-        {
-            import core.atomic : atomicOp;
-            assert(atomicOp!">="(bytesUsed, b.length));
-            atomicOp!"-="(bytesUsed, b.length);
-        }
-        else
-        {
-            assert(bytesUsed >= b.length);
-            bytesUsed -= b.length;
-        }
-        return parent.deallocate(b);
-    }
+    shared PrefixAllocator a;
+    auto b = a.allocate(42);
+    assert(b.length == 42);
+    assert(a.bytesUsed == 42);
+    assert(a.prefix(b) == 0);
+    a.prefix(b)++;
+    assert(a.prefix(b) == 1);
+    a.deallocate(b);
+    assert(a.bytesUsed == 0);
 }
 
 template isAbstractClass(T...)
@@ -575,13 +605,12 @@ debug(CollectionArray) import std.stdio;
 
 version(unittest)
 {
-    import std.experimental.allocator.mallocator;
-    import std.experimental.allocator.building_blocks.affix_allocator;
-    import std.experimental.allocator.building_blocks.stats_collector;
     import std.stdio;
 
-    private alias SCAlloc = AffixAllocator!(StatsCollector!(Mallocator, Options.bytesUsed), size_t);
-    private alias SSCAlloc = AffixAllocator!(StatsCollector!(Mallocator, Options.bytesUsed), size_t);
+    //private alias SCAlloc = AffixAllocator!(StatsCollector!(Mallocator, Options.bytesUsed), size_t);
+    //private alias SSCAlloc = AffixAllocator!(StatsCollector!(Mallocator, Options.bytesUsed), size_t);
+    private alias SCAlloc = shared PrefixAllocator;
+    private alias SSCAlloc = shared PrefixAllocator;
 
     SCAlloc _allocator;
     SSCAlloc _sallocator;
@@ -626,9 +655,6 @@ version(unittest)
 ///
 struct Array(T)
 {
-    import std.experimental.allocator.building_blocks.affix_allocator;
-    import std.experimental.allocator.mallocator;
-
     import core.atomic : atomicOp;
 
     package T[] _payload;
@@ -747,7 +773,6 @@ private:
         else
         {
             auto stuffLengthStr = q{
-                import std.range.primitives : walkLength;
                 size_t stuffLength = walkLength(} ~ stuff ~ ");";
         }
 
@@ -1254,7 +1279,6 @@ public:
         }
         else
         {
-            import std.range.primitives : walkLength;
             size_t stuffLength = walkLength(stuff);
         }
         if (stuffLength == 0) return 0;
@@ -1537,7 +1561,7 @@ public:
         import std.typecons : Flag, Yes, No;
         import std.functional : unaryFun;
 
-        Flag!"each" each(this Q)()
+        bool each(this Q)()
         if (is (typeof(unaryFun!fun(T.init))))
         {
             alias fn = unaryFun!fun;
@@ -1546,17 +1570,17 @@ public:
             // The array is kept alive (rc > 0) from the caller scope
             foreach (ref e; this._payload)
             {
-                static if (!is(typeof(fn(T.init)) == Flag!"each"))
+                static if (!is(typeof(fn(T.init)) == int))
                 {
                     cast(void) fn(e);
                 }
                 else
                 {
-                    if (fn(e) == No.each)
-                        return No.each;
+                    if (fn(e) == -1)
+                        return false;
                 }
             }
-            return Yes.each;
+            return true;
         }
     }
 
@@ -1564,23 +1588,22 @@ public:
     static if (is(T == int))
     @safe unittest
     {
-        import std.typecons : Flag, Yes, No;
         import std.conv;
 
         {
             auto ia = immutable Array!int([3, 2, 1]);
 
             static bool foo(int x) { return x > 0; }
-            static Flag!"each" bar(int x) { return x > 1 ? Yes.each : No.each; }
+            static int bar(int x) { return x > 1 ? 1 : -1; }
 
-            assert(ia.each!foo == Yes.each);
-            assert(ia.each!bar == No.each);
+            assert(ia.each!foo == true);
+            assert(ia.each!bar == false);
         }
 
-        size_t bytesUsed = _allocator.parent.bytesUsed;
+        size_t bytesUsed = _allocator.bytesUsed;
         assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
                 ~ to!string(bytesUsed) ~ " bytes");
-        bytesUsed = _sallocator.parent.bytesUsed;
+        bytesUsed = _sallocator.bytesUsed;
         assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
                 ~ to!string(bytesUsed) ~ " bytes");
     }
@@ -2273,10 +2296,10 @@ void testConcatAndAppend()
         testConcatAndAppend();
     }();
 
-    size_t bytesUsed = _allocator.parent.bytesUsed;
+    size_t bytesUsed = _allocator.bytesUsed;
     assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
             ~ to!string(bytesUsed) ~ " bytes");
-    bytesUsed = _sallocator.parent.bytesUsed;
+    bytesUsed = _sallocator.bytesUsed;
     assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
             ~ to!string(bytesUsed) ~ " bytes");
 }
@@ -2332,10 +2355,10 @@ void testSimple()
         testSimple();
     }();
 
-    size_t bytesUsed = _allocator.parent.bytesUsed;
+    size_t bytesUsed = _allocator.bytesUsed;
     assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
             ~ to!string(bytesUsed) ~ " bytes");
-    bytesUsed = _sallocator.parent.bytesUsed;
+    bytesUsed = _sallocator.bytesUsed;
     assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
             ~ to!string(bytesUsed) ~ " bytes");
 }
@@ -2384,10 +2407,10 @@ void testSimpleImmutable()
         testSimpleImmutable();
     }();
 
-    size_t bytesUsed = _allocator.parent.bytesUsed;
+    size_t bytesUsed = _allocator.bytesUsed;
     assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
             ~ to!string(bytesUsed) ~ " bytes");
-    bytesUsed = _sallocator.parent.bytesUsed;
+    bytesUsed = _sallocator.bytesUsed;
     assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
             ~ to!string(bytesUsed) ~ " bytes");
 }
@@ -2434,10 +2457,10 @@ void testCopyAndRef()
         testCopyAndRef();
     }();
 
-    size_t bytesUsed = _allocator.parent.bytesUsed;
+    size_t bytesUsed = _allocator.bytesUsed;
     assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
             ~ to!string(bytesUsed) ~ " bytes");
-    bytesUsed = _sallocator.parent.bytesUsed;
+    bytesUsed = _sallocator.bytesUsed;
     assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
             ~ to!string(bytesUsed) ~ " bytes");
 }
@@ -2497,10 +2520,10 @@ void testConstness()
         testConstness();
     }();
 
-    size_t bytesUsed = _allocator.parent.bytesUsed;
+    size_t bytesUsed = _allocator.bytesUsed;
     assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
             ~ to!string(bytesUsed) ~ " bytes");
-    bytesUsed = _sallocator.parent.bytesUsed;
+    bytesUsed = _sallocator.bytesUsed;
     assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
             ~ to!string(bytesUsed) ~ " bytes");
 }
@@ -2544,18 +2567,18 @@ void testWithStruct()
 {
     import std.conv;
 
-    assert(_allocator.parent.bytesUsed == 0);
+    assert(_allocator.bytesUsed == 0);
     //() nothrow pure @safe {
     () @trusted {
         testWithStruct();
     }();
 
-    size_t bytesUsed = _allocator.parent.bytesUsed;
-    size_t immBytes = _sallocator.parent.bytesUsed;
+    size_t bytesUsed = _allocator.bytesUsed;
+    size_t immBytes = _sallocator.bytesUsed;
     assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
             ~ to!string(bytesUsed) ~ " bytes and " ~ to!string(immBytes) ~ " imm bytes");
 
-    immBytes = _sallocator.parent.bytesUsed;
+    immBytes = _sallocator.bytesUsed;
     //assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
             //~ to!string(bytesUsed) ~ " bytes");
 
@@ -2594,10 +2617,10 @@ void testWithClass()
         testWithClass();
     }();
 
-    size_t bytesUsed = _allocator.parent.bytesUsed;
+    size_t bytesUsed = _allocator.bytesUsed;
     assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
             ~ to!string(bytesUsed) ~ " bytes");
-    bytesUsed = _sallocator.parent.bytesUsed;
+    bytesUsed = _sallocator.bytesUsed;
     assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
             ~ to!string(bytesUsed) ~ " bytes");
 }
@@ -2641,10 +2664,10 @@ void testOpOverloads()
         testOpOverloads();
     }();
 
-    size_t bytesUsed = _allocator.parent.bytesUsed;
+    size_t bytesUsed = _allocator.bytesUsed;
     assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
             ~ to!string(bytesUsed) ~ " bytes");
-    bytesUsed = _sallocator.parent.bytesUsed;
+    bytesUsed = _sallocator.bytesUsed;
     assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
             ~ to!string(bytesUsed) ~ " bytes");
 }
@@ -2682,10 +2705,10 @@ void testSlice()
         testSlice();
     }();
 
-    size_t bytesUsed = _allocator.parent.bytesUsed;
+    size_t bytesUsed = _allocator.bytesUsed;
     assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
             ~ to!string(bytesUsed) ~ " bytes");
-    bytesUsed = _sallocator.parent.bytesUsed;
+    bytesUsed = _sallocator.bytesUsed;
     assert(bytesUsed == 0, "Array ref count leaks memory; leaked "
             ~ to!string(bytesUsed) ~ " bytes");
 }
