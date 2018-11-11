@@ -828,12 +828,6 @@ private:
 
     void destroyUnused()
     {
-        debug(CollectionArray)
-        {
-            writefln("Array.destroyUnused: begin");
-            scope(exit) writefln("Array.destroyUnused: end");
-        }
-
         if (_support !is null)
         {
             delRef(_support);
@@ -856,11 +850,6 @@ public:
     if (!is(Q == shared)
         && isImplicitlyConvertible!(U, T))
     {
-        debug(CollectionArray)
-        {
-            writefln("Array.ctor: begin");
-            scope(exit) writefln("Array.ctor: end");
-        }
         static if (is(Q == immutable) || is(Q == const))
         {
             _isShared = true;
@@ -913,11 +902,6 @@ public:
         && isImplicitlyConvertible!(ElementType!Stuff, T)
         && !is(Stuff == T[]))
     {
-        debug(CollectionArray)
-        {
-            writefln("Array.ctor: begin");
-            scope(exit) writefln("Array.ctor: end");
-        }
         static if (is(Q == immutable) || is(Q == const))
         {
             _isShared = true;
@@ -933,12 +917,6 @@ public:
     // {
 
     private static enum copyCtorIncRef = q{
-        debug(CollectionArray)
-        {
-            writefln("Array.postblit: begin");
-            scope(exit) writefln("Array.postblit: end");
-        }
-
         _payload = rhs._payload;
         _support = rhs._support;
         _isShared = rhs._isShared;
@@ -946,8 +924,6 @@ public:
         if (_support !is null)
         {
             addRef(_support);
-            debug(CollectionArray) writefln("Array.postblit: Array %s has refcount: %s",
-                    _support, *prefCount(_support));
         }
     };
 
@@ -1008,20 +984,11 @@ public:
         if (_support !is null)
         {
             addRef(_support);
-            debug(CollectionArray) writefln("Array.ctor immutable: Array %s has "
-                    ~ "refcount: %s", _support, *prefCount(_support));
         }
     }
 
     ~this()
     {
-        debug(CollectionArray)
-        {
-            writefln("Array.dtor: Begin for instance %s of type %s",
-                cast(size_t)(&this), typeof(this).stringof);
-            scope(exit) writefln("Array.dtor: End for instance %s of type %s",
-                    cast(size_t)(&this), typeof(this).stringof);
-        }
         destroyUnused();
     }
 
@@ -1161,12 +1128,6 @@ public:
      */
     void reserve(size_t n)
     {
-        debug(CollectionArray)
-        {
-            writefln("Array.reserve: begin");
-            scope(exit) writefln("Array.reserve: end");
-        }
-
         // Will be optimized away, but the type system infers T's safety
         if (0) { T t = T.init; }
 
@@ -1269,12 +1230,6 @@ public:
     if (!isArray!(typeof(stuff)) && isInputRange!Stuff && !isInfinite!Stuff
         && isImplicitlyConvertible!(ElementType!Stuff, T))
     {
-        debug(CollectionArray)
-        {
-            writefln("Array.insert: begin");
-            scope(exit) writefln("Array.insert: end");
-        }
-
         // Will be optimized away, but the type system infers T's safety
         if (0) { T t = T.init; }
 
@@ -1323,12 +1278,6 @@ public:
     size_t insert(Stuff)(size_t pos, Stuff[] stuff...)
     if (isImplicitlyConvertible!(Stuff, T))
     {
-        debug(CollectionArray)
-        {
-            writefln("Array.insert: begin");
-            scope(exit) writefln("Array.insert: end");
-        }
-
         // Will be optimized away, but the type system infers T's safety
         if (0) { T t = T.init; }
 
@@ -1389,12 +1338,6 @@ public:
     @nogc nothrow pure @safe
     bool isUnique(this _)()
     {
-        debug(CollectionArray)
-        {
-            writefln("Array.isUnique: begin");
-            scope(exit) writefln("Array.isUnique: end");
-        }
-
         if (_support !is null)
         {
             return cast(bool) opCmpPrefix!"=="(_support, 1);
@@ -1477,11 +1420,6 @@ public:
     @nogc nothrow pure @safe
     void popFront()
     {
-        debug(CollectionArray)
-        {
-            writefln("Array.popFront: begin");
-            scope(exit) writefln("Array.popFront: end");
-        }
         assert(!empty, "Array.popFront: Array is empty");
         _payload = _payload[1 .. $];
     }
@@ -1515,11 +1453,6 @@ public:
      */
     Qualified tail(this Qualified)()
     {
-        debug(CollectionArray)
-        {
-            writefln("Array.tail: begin");
-            scope(exit) writefln("Array.tail: end");
-        }
         assert(!empty, "Array.tail: Array is empty");
 
         static if (is(Qualified == immutable) || is(Qualified == const))
@@ -1632,11 +1565,6 @@ public:
      */
     ref auto save(this _)()
     {
-        debug(CollectionArray)
-        {
-            writefln("Array.save: begin");
-            scope(exit) writefln("Array.save: end");
-        }
         return this;
     }
 
@@ -1710,11 +1638,6 @@ public:
      */
     Array!T dup(this Q)()
     {
-        debug(CollectionArray)
-        {
-            writefln("Array.dup: begin");
-            scope(exit) writefln("Array.dup: end");
-        }
         Array!T result;
 
         static if (is(Q == immutable) || is(Q == const))
@@ -1756,11 +1679,6 @@ public:
      */
     Qualified opSlice(this Qualified)()
     {
-        debug(CollectionArray)
-        {
-            writefln("Array.opSlice(): begin");
-            scope(exit) writefln("Array.opSlice(): end");
-        }
         return this.save;
     }
 
@@ -1786,12 +1704,6 @@ public:
     }
     body
     {
-        debug(CollectionArray)
-        {
-            scope(failure) assert(0, "Array.opSlice");
-            writefln("Array.opSlice(%d, %d): begin", start, end);
-            scope(exit) writefln("Array.opSlice(%d, %d): end", start, end);
-        }
         return typeof(this)(_support, _payload[start .. end], _isShared);
     }
 
@@ -2020,12 +1932,6 @@ public:
              || (isInputRange!U && isImplicitlyConvertible!(ElementType!U, T))
             ))
     {
-        debug(CollectionArray)
-        {
-            writefln("Array.opBinary!~: begin");
-            scope(exit) writefln("Array.opBinary!~: end");
-        }
-
         auto newArray = this.dup();
         static if (is(U : const typeof(this)))
         {
@@ -2074,13 +1980,6 @@ public:
      */
     auto ref opAssign()(auto ref typeof(this) rhs)
     {
-        debug(CollectionArray)
-        {
-            scope(failure) assert(0, "Array.opAssign");
-            writefln("Array.opAssign: begin: %s", rhs);
-            scope(exit) writefln("Array.opAssign: end");
-        }
-
         if (rhs._support !is null && _support is rhs._support)
         {
             if (rhs._payload is _payload)
@@ -2090,8 +1989,6 @@ public:
         if (rhs._support !is null)
         {
             rhs.addRef(rhs._support);
-            debug(CollectionArray) writefln("Array.opAssign: Array %s has refcount: %s",
-                    rhs._payload, *prefCount(rhs._support));
         }
         destroyUnused();
         _support = rhs._support;
@@ -2145,11 +2042,6 @@ public:
              || (isInputRange!U && isImplicitlyConvertible!(ElementType!U, T))
             ))
     {
-        debug(CollectionArray)
-        {
-            writefln("Array.opOpAssign!~: %s begin", typeof(this).stringof);
-            scope(exit) writefln("Array.opOpAssign!~: %s end", typeof(this).stringof);
-        }
         insert(length, rhs);
         return this;
     }
